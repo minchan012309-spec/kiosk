@@ -1,0 +1,47 @@
+name: Publish PC Club ZIP
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/publish.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install build dependencies
+        run: npm ci
+      - name: Build application
+        run: npm run build
+      - name: Create Windows installers
+        run: npm run dist:win
+      - name: Bundle installers and instructions
+        shell: pwsh
+        run: |
+          Copy-Item docs/operations.md release/INSTALL-KO.md
+          Compress-Archive -Path release/server/*Setup*.exe,release/station/*Setup*.exe,release/INSTALL-KO.md -DestinationPath release/PC-Club-Installers.zip -CompressionLevel NoCompression
+      - name: Publish downloadable ZIP
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          target_commitish: ${{ github.sha }}
+          name: PC Club 1.0.0
+          fail_on_unmatched_files: true
+          files: release/PC-Club-Installers.zip
+          body: |
+            학교 축제용 PC방 서버·키오스크와 Windows PC 런처입니다.
+            화이트·네온 라임, 둥근모꼴·양진체의 레트로 스타일입니다.
+
+            아래 PC-Club-Installers.zip을 다운로드해 압축을 풀어 주세요.
+            서버 설치 파일은 운영 PC 한 대에, Station 설치 파일은 각 사용자 PC에 설치합니다.
+            별도 Node.js 설치 없이 실행하며 첫 실행 시 관리자 비밀번호, PC 등록, 게임 경로를 설정합니다.
+
+            이번 업로드 작업은 추가 테스트를 실행하지 않습니다.
+            설치 파일은 미서명 상태이며 실제 행사 노트북의 게임·오버레이·PC 종료 호환성은 미검증입니다.
