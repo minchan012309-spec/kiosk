@@ -17,6 +17,10 @@ for (const role of ["server", "station"]) {
   mkdirSync(dir + "/dist/desktop", { recursive: true });
   cpSync("dist/desktop/" + role + ".cjs", dir + "/dist/desktop/main.cjs");
   cpSync("dist/desktop/preload.cjs", dir + "/dist/desktop/preload.cjs");
+  cpSync(
+    "dist/desktop/pcclub-keyguard.exe",
+    dir + "/dist/desktop/pcclub-keyguard.exe",
+  );
   const product = role === "server" ? "PC Club Admin" : "PC Club Station";
   const installer = resolve(".data/installer-" + role + ".nsi");
   const script = readFileSync("scripts/installer.nsi", "utf8")
@@ -50,6 +54,7 @@ for (const role of ["server", "station"]) {
         readFileSync("node_modules/electron/package.json", "utf8"),
       ).version,
       asar: true,
+      asarUnpack: ["dist/desktop/pcclub-keyguard.exe"],
       compression: "store",
       directories: { app: dir, output: resolve("release/" + role) },
       files: ["dist/**/*", "package.json"],

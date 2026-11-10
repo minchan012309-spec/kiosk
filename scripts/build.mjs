@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 import { build as viteBuild } from "vite";
 import { resolve } from "node:path";
-import { mkdirSync, cpSync } from "node:fs";
+import { mkdirSync, cpSync, existsSync } from "node:fs";
 mkdirSync("dist", { recursive: true });
 cpSync("build/icon.png", "dist/icon.png");
 await viteBuild({
@@ -36,3 +36,6 @@ await build({
   external: ["electron"],
   outfile: "dist/desktop/preload.cjs",
 });
+
+if (existsSync("build/pcclub-keyguard.exe"))
+  cpSync("build/pcclub-keyguard.exe", "dist/desktop/pcclub-keyguard.exe");

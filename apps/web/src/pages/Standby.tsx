@@ -1,3 +1,4 @@
+import { useBranding } from "../branding";
 import { useEffect, useState } from "react";
 import { Brand, ErrorMessage } from "../App";
 export function Standby({
@@ -9,6 +10,9 @@ export function Standby({
   thanks: boolean;
   children: React.ReactNode;
 }) {
+  const { branding } = useBranding();
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => setLogoFailed(false), [branding.logoUrl]);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -21,10 +25,19 @@ export function Standby({
         <span className="badge">PC {state.device?.seatName || "--"}</span>
       </header>
       <main>
-        <div className="pixel-pc">
-          <span>▰</span>
-          <i />
-        </div>
+        {branding.logoUrl && !logoFailed ? (
+          <img
+            className="standby-logo"
+            src={branding.logoUrl}
+            alt={branding.title}
+            onError={() => setLogoFailed(true)}
+          />
+        ) : (
+          <div className="pixel-pc">
+            <span>▰</span>
+            <i />
+          </div>
+        )}
         <div className="eyebrow">
           {thanks ? "SESSION COMPLETE" : "WAITING FOR PLAYER"}
         </div>

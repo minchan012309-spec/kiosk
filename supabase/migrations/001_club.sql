@@ -7,7 +7,7 @@ create table if not exists public.club_profiles (
  permissions text[] not null default array['dashboard.view'], active boolean not null default true
 );
 create table if not exists public.club_state(id int primary key check(id=1), data jsonb not null);
-insert into public.club_state values(1,'{"settings":{"title":"PC CLUB","subtitle":"FESTIVAL EDITION","logoUrl":"","defaultTheme":"light","initialSeconds":1800,"initialMoney":3000,"reservationSeconds":300},"seats":[],"kiosks":[],"devices":[],"sessions":[],"products":[],"extensions":[],"games":[],"orders":[],"commands":[],"exitRequests":[],"enrollments":[],"audit":[]}') on conflict do nothing;
+insert into public.club_state values(1,'{"settings":{"title":"PC CLUB","subtitle":"FESTIVAL EDITION","logoUrl":"","defaultTheme":"dark","initialSeconds":1800,"initialMoney":3000,"reservationSeconds":300},"seats":[],"kiosks":[],"devices":[],"sessions":[],"products":[],"extensions":[],"games":[],"orders":[],"commands":[],"exitRequests":[],"enrollments":[],"audit":[]}') on conflict do nothing;
 create table if not exists public.club_receipts(actor text,action text,key uuid,body_hash text not null,result jsonb not null,primary key(actor,action,key));
 create table if not exists public.club_exit_passwords(id uuid primary key default gen_random_uuid(),label text not null,hash text not null,active boolean not null default true);
 create table if not exists public.club_limits(key text primary key,attempts int not null,until_ms bigint not null);
@@ -35,7 +35,7 @@ create or replace function public.club_put(s jsonb,k text,o jsonb) returns jsonb
 $$;
 create or replace function public.club_session(s jsonb,seat text) returns jsonb language sql immutable set search_path=public as $$select value from jsonb_array_elements(s->'sessions') where value->>'seatId'=seat and value->>'status'='active' limit 1$$;
 create or replace function public.club_seats(s jsonb,n bigint,private boolean default false) returns jsonb language sql stable set search_path=public as $$
- select coalesce(jsonb_agg(v || jsonb_build_object('online',exists(select 1 from jsonb_array_elements(s->'devices') d where d->>'seatId'=v->>'id' and (d->>'lastSeen')::bigint>n-15000),'session',(select jsonb_build_object('status',r->>'status') from jsonb_array_elements(s->'sessions')r where r->>'seatId'=v->>'id' and r->>'status'<>'ended' limit 1)) || case when private then jsonb_build_object('deviceId',(select d->>'id' from jsonb_array_elements(s->'devices')d where d->>'seatId'=v->>'id' limit 1)) else '{}'::jsonb end),'[]'::jsonb) from jsonb_array_elements(s->'seats')v;
+ select coalesce(jsonb_agg(v || jsonb_build_object('online',exists(select 1 from jsonb_array_elements(s->'devices') d where d->>'seatId'=v->>'id' and (d->>'lastSeen')::bigint>n-15000),'session',(select jsonb_build_object('status',r->>'status') from jsonb_array_elements(s->'sessions')r where r->>'seatId'=v->>'id' and r->>'status'<>'ended' limit 1)) || case when private then jsonb_build_object('deviceId',(select d->>'id' from jsonb_array_elements(s->'devices')d where d->>'seatId'=v->>'id' limit 1)) else '{}'::jsonb end order by ord),'[]'::jsonb) from jsonb_array_elements(s->'seats') with ordinality t(v,ord);
 $$;
 create or replace function public.club_call(p_action text,p_payload jsonb default '{}'::jsonb,p_token text default null,p_request_id uuid default null) returns jsonb
 language plpgsql security definer set search_path=public,extensions as $$
@@ -56,7 +56,7 @@ begin
   if v->>'status'='pending' and (v->>'expiresAt')::bigint<=n then s=public.club_put(s,'exitRequests',v||'{"status":"expired"}'); end if;
  end loop;
  if a like '/admin/%' then
-  perm=case when a='/admin/state' then 'dashboard.view' when a like '/admin/kiosks/%' then 'seats.manage' when a like '/admin/accounts%' then 'accounts.manage' when a like '/admin/exit-passwords%' then 'settings.manage' when a='/admin/settings' then 'settings.manage' when a like '/admin/devices/%/shutdown' then 'pc.shutdown' when a='/admin/devices/enrollment' then 'seats.manage' when a like '/admin/seats%' then 'seats.manage' when a like '/admin/sessions/%/adjust' then 'session.adjust' when a like '/admin/sessions/%/end' then 'session.end' when a like '/admin/orders/%' then 'orders.manage' when a like '/admin/exit-requests/%' then 'exit.approve' when a='/admin/products' or a='/admin/extensions' then 'catalog.manage' when a='/admin/games' then 'games.manage' when a='/admin/personal-data/purge' then 'privacy.purge' else null end;
+  perm=case when a='/admin/state' then 'dashboard.view' when a like '/admin/kiosks/%' then 'seats.manage' when a like '/admin/accounts%' then 'accounts.manage' when a like '/admin/exit-passwords%' then 'settings.manage' when a='/admin/settings' then 'settings.manage' when a like '/admin/devices/%/restart' then 'pc.shutdown' when a='/admin/devices/enrollment' then 'seats.manage' when a like '/admin/seats%' then 'seats.manage' when a like '/admin/sessions/%/adjust' then 'session.adjust' when a like '/admin/sessions/%/end' then 'session.end' when a like '/admin/orders/%' then 'orders.manage' when a like '/admin/exit-requests/%' then 'exit.approve' when a='/admin/products' or a='/admin/extensions' then 'catalog.manage' when a='/admin/games' then 'games.manage' when a='/admin/personal-data/purge' then 'privacy.purge' else null end;
   if perm is null or not public.club_can(perm) then raise exception '권한이 없습니다. 관리자 계정과 권한을 확인하세요.'; end if;
   v_actor=auth.uid()::text;
  elsif a like '/device/%' and a<>'/device/enroll' then
@@ -75,7 +75,7 @@ begin
  end if;
  target=split_part(a,'/',4);
  if a='/public/state' then
-  signal=false; result=jsonb_build_object('settings',s->'settings','seats',public.club_seats(s,n),'products',(select coalesce(jsonb_agg(v),'[]') from jsonb_array_elements(s->'products')v where coalesce((v->>'enabled')::boolean,true)),'extensions',(select coalesce(jsonb_agg(v),'[]') from jsonb_array_elements(s->'extensions')v where coalesce((v->>'enabled')::boolean,true)),'games',(select coalesce(jsonb_agg(jsonb_build_object('id',v->>'id','name',v->>'name','description',v->>'description')),'[]') from jsonb_array_elements(s->'games')v where coalesce((v->>'enabled')::boolean,true)),'serverNow',n);
+  signal=false; result=jsonb_build_object('settings',s->'settings','seats',public.club_seats(s,n),'products',(select coalesce(jsonb_agg(v),'[]') from jsonb_array_elements(s->'products')v where coalesce((v->>'enabled')::boolean,true)),'extensions',(select coalesce(jsonb_agg(v),'[]') from jsonb_array_elements(s->'extensions')v where coalesce((v->>'enabled')::boolean,true)),'games',(select coalesce(jsonb_agg(jsonb_build_object('id',v->>'id','name',v->>'name','description',v->>'description','imageUrl',v->>'imageUrl')),'[]') from jsonb_array_elements(s->'games')v where coalesce((v->>'enabled')::boolean,true)),'serverNow',n);
  elsif a='/admin/state' then
   signal=false; select to_jsonb(p) into profile from public.club_profiles p where p.id=auth.uid();
   result=s-'devices'-'enrollments'-'kiosks'||jsonb_build_object('profile',profile,'seats',public.club_seats(s,n,true),'sessions',(select coalesce(jsonb_agg(case when public.club_can('visitors.view') then v-'codeHash' else v-'codeHash'-'studentId'-'name'||'{"name":"비공개","studentId":""}' end),'[]') from jsonb_array_elements(s->'sessions')v),'games',case when public.club_can('games.manage') then s->'games' else '[]'::jsonb end,'orders',case when public.club_can('orders.manage') then s->'orders' else '[]'::jsonb end,'audit',case when public.club_can('audit.view') then (select coalesce(jsonb_agg(v order by ord desc),'[]') from jsonb_array_elements(s->'audit') with ordinality t(v,ord)) else '[]'::jsonb end,'exitPasswords',case when public.club_can('settings.manage') then (select coalesce(jsonb_agg(jsonb_build_object('id',id,'label',label,'active',active)),'[]') from public.club_exit_passwords) else '[]'::jsonb end,'accounts',case when public.club_can('accounts.manage') then (select coalesce(jsonb_agg(to_jsonb(p) order by email),'[]') from public.club_profiles p) else '[]'::jsonb end,'serverNow',n);
@@ -95,10 +95,32 @@ begin
   if p_payload ? 'logoUrl' and coalesce(p_payload->>'logoUrl','')<>'' and (p_payload->>'logoUrl') not like 'https://gtvgeqdxcoiplhhufvgg.supabase.co/storage/v1/object/public/club-branding/%' then raise exception '로고는 로고 업로드 기능을 사용하세요.'; end if;
   if p_payload ? 'defaultTheme' and p_payload->>'defaultTheme' not in ('light','dark','system') then raise exception '테마 값이 올바르지 않습니다.'; end if;
   s=jsonb_set(s,'{settings}',s->'settings'||p_payload);result=s->'settings';
+ elsif a='/admin/seats/layout' then
+  if jsonb_typeof(p_payload->'seats') is distinct from 'array' or jsonb_array_length(p_payload->'seats')<>jsonb_array_length(s->'seats') then raise exception '좌석 목록이 변경됐습니다. 새로고침하고 배치하세요.';end if;
+  if (select coalesce(jsonb_agg(value->'id' order by ord),'[]') from jsonb_array_elements(s->'seats') with ordinality t(value,ord)) is distinct from p_payload->'expectedIds' then raise exception '다른 관리자가 좌석 목록을 변경했습니다. 새로고침하세요.';end if;
+  if (select count(distinct value->>'id') from jsonb_array_elements(p_payload->'seats'))<>jsonb_array_length(s->'seats') then raise exception '중복 좌석이 있습니다.';end if;
+  rows='[]'::jsonb;
+  for v in select value from jsonb_array_elements(p_payload->'seats') loop
+   item=public.club_find(s,'seats',v->>'id');
+   if item is null or (v->>'row') is null or (v->>'col') is null or (v->>'row')::int not between 1 and 24 or (v->>'col')::int not between 1 and 24 then raise exception '배치는 1~24행/열 안에서 설정하세요.';end if;
+   if exists(select 1 from jsonb_array_elements(rows)x where (x->>'row')::int=(v->>'row')::int and (x->>'col')::int=(v->>'col')::int) then raise exception '좌석이 겹칩니다. 빈칸에 배치하세요.';end if;
+   rows=rows||jsonb_build_array(item||jsonb_build_object('row',(v->>'row')::int,'col',(v->>'col')::int));
+  end loop;
+  s=jsonb_set(s,'{seats}',rows);result=jsonb_build_object('ok',true);
+ elsif a like '/admin/seats/%/delete' then
+  if public.club_find(s,'seats',target) is null then raise exception '좌석이 없습니다.';end if;
+  if exists(select 1 from jsonb_array_elements(s->'sessions')x where x->>'seatId'=target and x->>'status'<>'ended') then raise exception '배정/이용 중인 좌석은 먼저 이용을 종료하세요.';end if;
+  for k in select unnest(array['seats','devices','enrollments']) loop
+   s=jsonb_set(s,array[k],(select coalesce(jsonb_agg(x order by ord),'[]') from jsonb_array_elements(s->k) with ordinality t(x,ord) where case when k='seats' then x->>'id'<>target else coalesce(x->>'seatId','')<>target end));
+  end loop;
+  result=jsonb_build_object('ok',true);
  elsif a='/admin/seats' then
-  if length(trim(p_payload->>'name')) not between 1 and 30 then raise exception '좌석 이름을 입력하세요.'; end if;
-  if exists(select 1 from jsonb_array_elements(s->'seats')v where v->>'name'=p_payload->>'name') then raise exception '같은 이름의 좌석이 있습니다.'; end if;
-  result=jsonb_build_object('id',gen_random_uuid()::text,'name',trim(p_payload->>'name'),'enabled',true);s=public.club_put(s,'seats',result);
+  if length(coalesce(trim(p_payload->>'name'),'')) not between 1 and 30 then raise exception '좌석 이름을 입력하세요.'; end if;
+  if exists(select 1 from jsonb_array_elements(s->'seats')v where v->>'name'=trim(p_payload->>'name')) then raise exception '같은 이름의 좌석이 있습니다.'; end if;
+  select greatest(6,coalesce(max((x->>'col')::int),6)) into version from jsonb_array_elements(s->'seats')x;
+  select g into amount from generate_series(0,(version*24-1)::int)g where not exists(select 1 from jsonb_array_elements(s->'seats') with ordinality t(x,ord) where coalesce((x->>'row')::int,((ord-1)/6)::int+1)=g/version+1 and coalesce((x->>'col')::int,((ord-1)%6)::int+1)=g%version+1) order by g limit 1;
+  if amount is null then raise exception '자리 배치 공간이 가득 찼습니다.';end if;
+  result=jsonb_build_object('id',gen_random_uuid()::text,'name',trim(p_payload->>'name'),'enabled',true,'row',amount/version+1,'col',amount%version+1);s=public.club_put(s,'seats',result);
  elsif a like '/admin/seats/%' then
   v=public.club_find(s,'seats',target);if v is null then raise exception '좌석이 없습니다.'; end if;v=v||jsonb_build_object('enabled',(p_payload->>'enabled')::boolean);s=public.club_put(s,'seats',v);result=v;
  elsif a='/admin/kiosks/enrollment' then
@@ -148,6 +170,7 @@ begin
    if k='products' then stock=(p_payload->>'stock')::bigint;if stock is null or stock not between 0 and 1000000 then raise exception '재고를 확인하세요.';end if;if item is not null and (p_payload->>'version')::bigint is distinct from (item->>'version')::bigint then raise exception '상품 또는 재고가 변경됐습니다. 다시 열어 수정하세요.';end if;v=v||jsonb_build_object('version',coalesce((item->>'version')::bigint,0)+1);
    elsif (p_payload->>'seconds') is null or (p_payload->>'seconds')::bigint not between 60 and 86400 then raise exception '연장 시간을 확인하세요.';end if;
   else if length(coalesce(v->>'executable',''))>1000 or jsonb_typeof(coalesce(v->'args','[]'))<>'array' or jsonb_array_length(coalesce(v->'args','[]'))>20 then raise exception '실행 경로와 인수를 확인하세요.';end if;end if;
+  if coalesce(v->>'imageUrl','')<>'' and (length(v->>'imageUrl')>2000 or (v->>'imageUrl') not like ('https://gtvgeqdxcoiplhhufvgg.supabase.co/storage/v1/object/public/club-media/'||k||'/%')) then raise exception '미리보기 이미지는 이미지 업로드 기능으로 등록하세요.';end if;
   s=public.club_put(s,k,v);result=v;
  elsif a='/device/orders' or a='/device/extensions' then
   r=public.club_session(s,d->>'seatId');if r is null then raise exception '진행 중인 이용 시간이 없습니다.';end if;
@@ -175,8 +198,8 @@ begin
  elsif a like '/admin/exit-requests/%' then
   v=public.club_find(s,'exitRequests',target);if v is null or v->>'status'<>'pending' or (v->>'expiresAt')::bigint<=n then raise exception '승인 요청이 만료됐거나 처리됐습니다.';end if;
   if (p_payload->>'approve')::boolean then item=public.club_find(s,'devices',v->>'deviceId');if item is null or (item->>'lastSeen')::bigint<n-15000 then raise exception 'PC가 오프라인입니다.';end if;item=jsonb_build_object('id',gen_random_uuid()::text,'deviceId',v->>'deviceId','type','exit','status','pending','expiresAt',n+60000);s=public.club_put(s,'commands',item);v=v||'{"status":"approved"}';else v=v||'{"status":"rejected"}';end if;s=public.club_put(s,'exitRequests',v);result=v;
- elsif a like '/admin/devices/%/shutdown' then
-  v=public.club_find(s,'devices',target);if v is null or (v->>'lastSeen')::bigint<n-15000 or coalesce((p_payload->>'confirm')::boolean,false)=false then raise exception '연결 상태와 종료 확인을 확인하세요.';end if;result=jsonb_build_object('id',gen_random_uuid()::text,'deviceId',target,'type','shutdown','status','pending','expiresAt',n+60000);s=public.club_put(s,'commands',result);
+ elsif a like '/admin/devices/%/restart' then
+  v=public.club_find(s,'devices',target);if v is null or (v->>'lastSeen')::bigint<n-15000 or coalesce((p_payload->>'confirm')::boolean,false)=false then raise exception '연결 상태와 재부팅 확인을 확인하세요.';end if;result=jsonb_build_object('id',gen_random_uuid()::text,'deviceId',target,'type','restart','status','pending','expiresAt',n+60000);s=public.club_put(s,'commands',result);
  elsif a like '/device/commands/%/ack' then
   item=public.club_find(s,'commands',target);code=p_payload->>'status';if item is null or item->>'deviceId'<>d->>'id' or (item->>'expiresAt')::bigint<=n or not(item->>'status'='pending' or (item->>'status'='accepted' and code='failed')) or code not in ('accepted','failed') then raise exception '명령이 만료됐거나 처리됐습니다.';end if;
   s=public.club_put(s,'commands',item||jsonb_build_object('status',code,'message',left(coalesce(p_payload->>'message',''),200)));if code='accepted' then for r in select value from jsonb_array_elements(s->'sessions') where value->>'seatId'=d->>'seatId' and value->>'status'<>'ended' loop s=public.club_put(s,'sessions',r||'{"status":"ended","codeHash":""}');end loop;end if;result='{"ok":true}';
@@ -203,5 +226,9 @@ drop policy if exists club_logo_upload on storage.objects;
 create policy club_logo_upload on storage.objects for insert to authenticated with check(bucket_id='club-branding' and public.club_can('settings.manage'));
 drop policy if exists club_logo_delete on storage.objects;
 create policy club_logo_delete on storage.objects for delete to authenticated using(bucket_id='club-branding' and public.club_can('settings.manage'));
+
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('club-media','club-media',true,2097152,array['image/png','image/jpeg','image/webp']) on conflict(id) do update set public=true,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+drop policy if exists club_media_upload on storage.objects;
+create policy club_media_upload on storage.objects for insert to authenticated with check(bucket_id='club-media' and (((storage.foldername(name))[1]='products' and public.club_can('catalog.manage')) or ((storage.foldername(name))[1]='games' and public.club_can('games.manage'))));
 
 commit;

@@ -1,12 +1,24 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PC CLUB · 축제 PC방</title>
   </head>
   <body>
-    <div id="root"></div>
+    <style>
+      #boot-splash{min-height:100vh;display:grid;place-content:center;justify-items:center;gap:18px;background:#11150f;color:#edf4e9;font-family:monospace;text-align:center;margin:0;padding:24px}
+      #boot-logo{max-width:220px;max-height:140px;object-fit:contain}#boot-splash strong{font-size:26px;color:#d5ff32}#boot-splash p{font-size:16px}body{margin:0}
+    </style>
+    <div id="root"><div id="boot-splash" role="status"><img id="boot-logo" alt="" hidden/><strong id="boot-title">PC CLUB</strong><p>프로그램을 불러오는 중입니다…</p><small>잠시만 기다려 주세요.</small></div></div>
+    <script>
+      try {
+        var brand = JSON.parse(localStorage.getItem('pcclub.branding') || '{}');
+        document.getElementById('boot-title').textContent = brand.title || 'PC CLUB';
+        if (brand.logoUrl && brand.logoUrl.indexOf('https://') === 0) { var logo = document.getElementById('boot-logo'); logo.src = brand.logoUrl; logo.hidden = false; }
+        if (location.hash === '#/status-handle') { document.getElementById('boot-splash').style.display = 'none'; document.documentElement.style.background = 'transparent'; }
+      } catch (_) {}
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

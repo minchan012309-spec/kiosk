@@ -1,3 +1,6 @@
+import { LoadingScreen } from "./LoadingScreen";
+import { SeatLayout } from "./SeatLayout";
+import { ImageField, PreviewImage, uploadCatalogImage } from "./ImageField";
 import { confirmInApp as confirm } from "../dialogs";
 import {
   AccountsPanel,
@@ -146,6 +149,10 @@ export function Admin() {
       setBusy(false);
     }
   };
+  if (!ready)
+    return (
+      <LoadingScreen error={error} message="관리자 화면을 준비하고 있습니다." />
+    );
   if (!logged)
     return (
       <div className="auth-screen">
@@ -253,7 +260,18 @@ export function Admin() {
       if (kind === "products") data.stock = Number(f.get("stock"));
       else data.seconds = Number(f.get("minutes")) * 60;
     }
-    if (await mutate("/admin/" + kind, data)) {
+    if (
+      await run(async () => {
+        if (kind !== "extensions") {
+          const file = f.get("imageFile");
+          data.imageUrl =
+            file instanceof File && file.size > 0
+              ? await uploadCatalogImage(file, kind)
+              : String(f.get("imageUrl") || "");
+        }
+        return api("/admin/" + kind, data, crypto.randomUUID());
+      })
+    ) {
       setEditing(null);
       form.reset();
     }
@@ -535,6 +553,13 @@ export function Admin() {
                 </button>
               </form>
             </section>
+            {state && (
+              <SeatLayout
+                seats={state.seats}
+                busy={busy}
+                save={(payload) => mutate("/admin/seats/layout", payload)}
+              />
+            )}
             <div className="pc-grid">
               {state?.seats.map((s) => (
                 <section className="panel pc-card" key={s.id}>
@@ -579,6 +604,20 @@ export function Admin() {
                     </button>
                   </div>
                   <button
+                    className="danger"
+                    disabled={busy || !!s.session}
+                    onClick={async () => {
+                      if (
+                        await confirm(
+                          `PC ${s.name}을 삭제할까요? 연결 등록도 해제됩니다. 기록은 보존되며 다시 쓰려면 PC를 새로 등록해야 합니다.`,
+                        )
+                      )
+                        void mutate("/admin/seats/" + s.id + "/delete", {});
+                    }}
+                  >
+                    PC 삭제
+                  </button>
+                  <button
                     className="danger wide"
                     disabled={
                       busy ||
@@ -589,16 +628,16 @@ export function Admin() {
                     onClick={async () => {
                       if (
                         await confirm(
-                          `PC ${s.name}의 Windows를 종료합니다. 저장하지 않은 데이터가 사라질 수 있습니다. 진행할까요?`,
+                          `PC ${s.name}의 Windows를 재부팅합니다. 저장하지 않은 데이터가 사라질 수 있습니다. 진행할까요?`,
                         )
                       )
                         void mutate(
-                          "/admin/devices/" + s.deviceId + "/shutdown",
+                          "/admin/devices/" + s.deviceId + "/restart",
                           { confirm: true },
                         );
                     }}
                   >
-                    Windows 종료
+                    Windows 재부팅
                   </button>
                 </section>
               ))}
@@ -611,12 +650,16 @@ export function Admin() {
                 .map((c) => (
                   <div className="list-row" key={c.id}>
                     <span>
-                      {c.type === "shutdown" ? "Windows 종료" : "런처 종료"}
+                      {c.type === "restart"
+                        ? "Windows 재부팅"
+                        : c.type === "shutdown"
+                          ? "구버전 종료 명령"
+                          : "런처 종료"}
                       <small>{c.id.slice(0, 8)}</small>
                     </span>
                     <span className="tag">
                       {c.status === "accepted"
-                        ? "PC가 명령 접수 (전원 꺼짐 확인 아님)"
+                        ? "PC가 명령 접수 (재부팅 완료 확인 아님)"
                         : c.status === "pending"
                           ? "응답 대기"
                           : c.status === "expired"
@@ -706,6 +749,13 @@ export function Admin() {
                   : state?.extensions
                 )?.map((p) => (
                   <div className="list-row" key={p.id}>
+                    {"stock" in p && (
+                      <PreviewImage
+                        url={p.imageUrl}
+                        fallback="▧"
+                        className="catalog-thumb"
+                      />
+                    )}
                     <span>
                       <strong>
                         {p.name}
@@ -787,6 +837,15 @@ export function Admin() {
                       </label>
                     )}
                   </div>
+                  {kind === "products" && (
+                    <ImageField
+                      initial={
+                        editing?.kind === kind
+                          ? editing.value.imageUrl || ""
+                          : ""
+                      }
+                    />
+                  )}
                   <label className="check">
                     <input
                       type="checkbox"
@@ -821,6 +880,11 @@ export function Admin() {
               )}
               {state?.games.map((g) => (
                 <div className="list-row" key={g.id}>
+                  <PreviewImage
+                    url={g.imageUrl}
+                    fallback="▷"
+                    className="catalog-thumb"
+                  />
                   <span>
                     <strong>
                       ▷ {g.name}
@@ -860,6 +924,13 @@ export function Admin() {
                     defaultValue={editing?.value?.description || ""}
                   />
                 </label>
+                <ImageField
+                  initial={
+                    editing?.kind === "games"
+                      ? editing.value.imageUrl || ""
+                      : ""
+                  }
+                />
                 <label>
                   실행 파일 경로
                   <input

@@ -1,3 +1,5 @@
+import { LoadingScreen } from "./LoadingScreen";
+import { PreviewImage } from "./ImageField";
 import { Standby } from "./Standby";
 import { confirmInApp as confirm } from "../dialogs";
 import { GameSettings } from "./GameSettings";
@@ -72,6 +74,10 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
     if (state?.closeAttemptAt) setTab("exit");
   }, [state?.closeAttemptAt]);
   const closeOverlay = () => void call("closeOverlay");
+  if (!state)
+    return (
+      <LoadingScreen error={error} message="PC 런처를 준비하고 있습니다." />
+    );
   if (!state?.registered)
     return (
       <div className="auth-screen">
@@ -377,7 +383,11 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                   });
                 }}
               >
-                <span className="game-art">{["✦", "◈", "⊕", "⌘"][i % 4]}</span>
+                <PreviewImage
+                  url={g.imageUrl}
+                  fallback={["✦", "◈", "⊕", "⌘"][i % 4]}
+                  className="game-art"
+                />
                 <span className="game-content">
                   <small>
                     {state.currentGame === g.id
@@ -416,7 +426,11 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           )}
           {state.products?.map((p) => (
             <section className="panel shop-card" key={p.id}>
-              <div className="snack-art">▧</div>
+              <PreviewImage
+                url={p.imageUrl}
+                fallback="▧"
+                className="snack-art"
+              />
               <h2>{p.name}</h2>
               <p className="muted">남은 수량 {p.stock}개</p>
               <strong>{money(p.price)} M</strong>

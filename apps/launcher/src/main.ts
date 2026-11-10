@@ -69,6 +69,22 @@ let localGamePaths: Record<string, string> = {},
   lastStopError = "",
   polling = false,
   stopping = false;
+let shuttingDown = false;
+const stationTimers = new Set<ReturnType<typeof setInterval>>();
+function repeat(fn: () => void, ms: number) {
+  const timer = setInterval(() => {
+    if (!shuttingDown) fn();
+  }, ms);
+  stationTimers.add(timer);
+  return timer;
+}
+function stopStationTimers() {
+  shuttingDown = true;
+  for (const timer of stationTimers) clearInterval(timer);
+  stationTimers.clear();
+  keyguard?.kill();
+  keyguard = undefined;
+}
 let shortcutWarning = "";
 let thankYouUntil = 0,
   closeAttemptAt = 0,
@@ -225,9 +241,11 @@ function state() {
   };
 }
 function pushState() {
+  if (shuttingDown) return;
   syncStatusHandle();
   for (const w of [main, overlay])
-    if (w && !w.isDestroyed()) w.webContents.send("cafe:state", state());
+    if (w && !w.isDestroyed() && !w.webContents.isDestroyed())
+      w.webContents.send("cafe:state", state());
 }
 async function stopGame() {
   try {
@@ -242,14 +260,18 @@ async function stopGame() {
   }
 }
 async function handleCommands() {
-  if (!deviceState) return;
+  if (shuttingDown || !deviceState) return;
   gate ??= new ExitGate(deviceState.device.id, trustedNow);
   for (const c of deviceState.commands) {
     if (consumed.includes(c.id) || !gate.consume(c)) continue;
     try {
+      if (c.type !== "exit" && c.type !== "restart")
+        throw Error(
+          "구버전 Windows 종료 명령은 실행하지 않습니다. 관리자 화면에서 재부팅을 다시 요청하세요.",
+        );
       await stopGame();
-      if (c.type === "shutdown" && process.platform !== "win32")
-        throw Error("Windows PC에서만 종료할 수 있습니다.");
+      if (c.type !== "exit" && process.platform !== "win32")
+        throw Error("Windows PC에서만 재부팅할 수 있습니다.");
       await request("/device/commands/" + c.id + "/ack", {
         status: "accepted",
       });
@@ -262,8 +284,12 @@ async function handleCommands() {
       }
       await new Promise<void>((yes, no) =>
         execFile(
-          "shutdown.exe",
-          ["/s", "/t", "5"],
+          join(
+            process.env.SystemRoot || "C:\\Windows",
+            "System32",
+            "shutdown.exe",
+          ),
+          ["/r", "/t", "5"],
           { windowsHide: true, timeout: 5000 },
           (error) => (error ? no(error) : yes()),
         ),
@@ -284,7 +310,7 @@ async function handleCommands() {
   }
 }
 async function poll() {
-  if (!token || polling) return;
+  if (shuttingDown || !token || polling) return;
   polling = true;
   try {
     await request("/device/heartbeat", {});
@@ -303,6 +329,7 @@ async function poll() {
       saveConfig();
     }
     const next: DeviceState = await request("/device/state");
+    if (shuttingDown) return;
     const had = deviceState?.session?.id;
     const previousReservation = deviceState?.reservation?.id;
     serverNow = next.serverNow;
@@ -333,7 +360,25 @@ async function poll() {
     await handleCommands();
   } catch (e) {
     online = false;
-    lastError = "클라우드 연결을 확인해 주세요. " + (e as Error).message;
+    if ((e as Error).message.includes("등록된 PC 인증이 필요합니다")) {
+      token = "";
+      recoveryHash = "";
+      deviceState = undefined;
+      lastSessionId = null;
+      pendingEnd = null;
+      operatorUntil = 0;
+      pendingClose = false;
+      gate = undefined;
+      keyguard?.kill();
+      keyguard = undefined;
+      globalShortcut.unregister("Alt+F4");
+      saveConfig();
+      overlay?.hide();
+      main?.show();
+      main?.focus();
+      lastError =
+        "관리자가 PC 연결을 해제했습니다. 새 좌석 등록 코드를 입력하세요.";
+    } else lastError = "클라우드 연결을 확인해 주세요. " + (e as Error).message;
   } finally {
     polling = false;
     pushState();
@@ -343,7 +388,7 @@ function makeWindow(extra: Electron.BrowserWindowConstructorOptions = {}) {
   const w = new BrowserWindow({
     width: 1360,
     height: 900,
-    backgroundColor: "#f6f8f2",
+    backgroundColor: "#11150f",
     icon: join(root, "dist/icon.png"),
     autoHideMenuBar: true,
     ...extra,
@@ -354,6 +399,12 @@ function makeWindow(extra: Electron.BrowserWindowConstructorOptions = {}) {
       sandbox: true,
       ...extra.webPreferences,
     },
+  });
+  w.on("closed", () => {
+    if (main === w) main = undefined;
+    if (overlay === w) overlay = undefined;
+    if (statusHandle === w) statusHandle = undefined;
+    if (kiosk === w) kiosk = undefined;
   });
   w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   w.webContents.on("will-navigate", (e, url) => {
@@ -408,7 +459,7 @@ async function createStatusHandle() {
   syncStatusHandle();
 }
 function syncStatusHandle() {
-  if (!statusHandle || statusHandle.isDestroyed()) return;
+  if (shuttingDown || !statusHandle || statusHandle.isDestroyed()) return;
   const visible =
     !!token &&
     !!deviceState?.session &&
@@ -432,7 +483,7 @@ function syncStatusHandle() {
   if (!statusHandle.isVisible()) statusHandle.showInactive();
 }
 function openOverlay() {
-  if (!token) return;
+  if (shuttingDown || !token) return;
   if (!overlay) {
     overlay = makeWindow({
       width: 670,
@@ -467,17 +518,66 @@ function openOverlay() {
   overlay.focus();
   pushState();
 }
+let keyguard: ChildProcess | undefined;
 function installExitShortcut() {
-  if (
-    process.platform === "win32" &&
-    token &&
-    !globalShortcut.isRegistered("Alt+F4")
-  ) {
-    const ok = globalShortcut.register("Alt+F4", () => blockedClose("Alt+F4"));
-    if (!ok)
-      shortcutWarning =
-        "Alt+F4 전역 차단을 등록하지 못했습니다. 다른 단축키 프로그램을 종료하고 런처를 다시 실행하세요.";
+  if (process.platform !== "win32" || !token || shuttingDown || keyguard)
+    return;
+  const fallback = () => {
+    if (shuttingDown || !token) return;
+    if (!globalShortcut.isRegistered("Alt+F4")) {
+      const ok = globalShortcut.register("Alt+F4", () =>
+        blockedClose("Alt+F4"),
+      );
+      shortcutWarning = ok
+        ? ""
+        : "Windows 종료키 보호를 시작하지 못했습니다. 관리자에게 앱 재시작 또는 Windows 키오스크 정책 적용을 요청하세요. 런처 창 안의 종료 차단은 유지됩니다.";
+    }
+    pushState();
+  };
+  const executable = join(
+    app.isPackaged ? root + ".unpacked" : root,
+    "dist/desktop/pcclub-keyguard.exe",
+  );
+  if (!existsSync(executable)) {
+    fallback();
+    return;
   }
+  let ready = false,
+    buffer = "";
+  const helper = spawn(executable, [String(process.pid)], {
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  keyguard = helper;
+  const startup = setTimeout(() => {
+    if (!ready) helper.kill();
+  }, 5000);
+  startup.unref();
+  helper.stdout?.on("data", (data) => {
+    buffer += data.toString();
+    let index: number;
+    while ((index = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, index).trim();
+      buffer = buffer.slice(index + 1);
+      if (line === "READY") {
+        ready = true;
+        clearTimeout(startup);
+        globalShortcut.unregister("Alt+F4");
+        shortcutWarning = "";
+        pushState();
+      }
+      if (line === "BLOCKED" && ready && !shuttingDown) blockedClose("Alt+F4");
+    }
+  });
+  const failed = () => {
+    clearTimeout(startup);
+    if (keyguard === helper) {
+      keyguard = undefined;
+      fallback();
+    }
+  };
+  helper.once("error", failed);
+  helper.once("exit", failed);
 }
 function blockedClose(reason: string) {
   if (!token || Date.now() - closeAttemptAt < 1500) return;
@@ -534,7 +634,7 @@ async function start() {
   await createStatusHandle();
   void poll();
   let hoverStart = 0;
-  setInterval(() => {
+  repeat(() => {
     syncStatusHandle();
     if (!token || overlay?.isVisible()) return;
     const cursor = screen.getCursorScreenPoint(),
@@ -547,8 +647,8 @@ async function start() {
       }
     } else hoverStart = 0;
   }, 100).unref();
-  setInterval(() => void poll(), 3000).unref();
-  setInterval(() => {
+  repeat(() => void poll(), 3000).unref();
+  repeat(() => {
     if (
       ((deviceState?.session && clock.remaining() <= 0) ||
         (!deviceState?.session && games.running)) &&
@@ -781,9 +881,14 @@ app.on("before-quit", (e) => {
   if (ROLE === "station" && token && !approvedQuit) {
     e.preventDefault();
     blockedClose("프로그램 종료 시도");
+    return;
   }
+  stopStationTimers();
 });
-app.on("will-quit", () => globalShortcut.unregisterAll());
+app.on("will-quit", () => {
+  stopStationTimers();
+  globalShortcut.unregisterAll();
+});
 app.on("window-all-closed", () => {
   if (ROLE === "server" || approvedQuit || !token) app.quit();
 });

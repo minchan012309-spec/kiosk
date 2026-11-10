@@ -10,7 +10,7 @@ export const PERMISSIONS = [
   ["time.adjust", "시간 추가·차감"],
   ["money.adjust", "머니 추가·차감"],
   ["session.end", "이용 종료 / 킥"],
-  ["pc.shutdown", "Windows 종료"],
+  ["pc.shutdown", "Windows 재부팅"],
   ["exit.approve", "런처 종료 승인"],
   ["orders.manage", "주문 처리·환불"],
   ["catalog.manage", "상품·가격·재고 수정"],

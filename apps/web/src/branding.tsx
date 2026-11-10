@@ -11,7 +11,7 @@ const defaults: Branding = {
   title: "PC CLUB",
   subtitle: "FESTIVAL EDITION",
   logoUrl: "",
-  defaultTheme: "light",
+  defaultTheme: "dark",
 };
 const Context = createContext<{
   branding: Branding;

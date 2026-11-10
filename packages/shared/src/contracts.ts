@@ -15,6 +15,7 @@ export const productSchema = z
     name: text,
     price: integer,
     stock: integer,
+    imageUrl: z.string().max(2000).optional(),
     enabled: z.boolean().optional(),
   })
   .strict();
@@ -32,6 +33,7 @@ export const gameSchema = z
     id: text.optional(),
     name: text,
     description: z.string().max(200).default(""),
+    imageUrl: z.string().max(2000).optional(),
     executable: z.string().max(1000).default(""),
     args: z.array(z.string().max(1000)).max(20).default([]),
     paths: z.record(z.string().max(1000)).default({}),
@@ -74,7 +76,13 @@ export type Session = {
   endAt: number | null;
   status: "reserved" | "active" | "ended";
 };
-export type Seat = { id: string; name: string; enabled: boolean };
+export type Seat = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  row?: number;
+  col?: number;
+};
 export type Device = {
   id: string;
   seatId: string;
@@ -95,7 +103,7 @@ export type Order = {
 export type Command = {
   id: string;
   deviceId: string;
-  type: "exit" | "shutdown";
+  type: "exit" | "shutdown" | "restart";
   expiresAt: number;
   status: "pending" | "accepted" | "failed" | "expired";
   message?: string;
@@ -123,7 +131,7 @@ export type PublicState = {
   seats: PublicSeat[];
   products: Product[];
   extensions: Extension[];
-  games: { id: string; name: string; description: string }[];
+  games: { id: string; name: string; description: string; imageUrl?: string }[];
   serverNow: number;
 };
 export type DeviceState = {

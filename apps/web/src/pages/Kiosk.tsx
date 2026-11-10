@@ -1,3 +1,5 @@
+import { LoadingScreen } from "./LoadingScreen";
+import { seatPosition } from "./SeatLayout";
 import { useEffect, useRef, useState } from "react";
 import type { PublicState } from "../../../../packages/shared/src/contracts";
 import { api, money, subscribe } from "../api";
@@ -73,6 +75,13 @@ export function Kiosk() {
     const t = setTimeout(reset, 20000);
     return () => clearTimeout(t);
   }, [result]);
+  if (!state)
+    return (
+      <LoadingScreen
+        error={error}
+        message="좌석과 키오스크 설정을 불러오고 있습니다."
+      />
+    );
   if (!kioskToken)
     return (
       <div className="auth-screen">
@@ -187,15 +196,24 @@ export function Kiosk() {
               연결 대기 / 사용 중지
             </span>
           </div>
-          <div className="seat-map">
+          <div
+            className="seat-map classroom-seats"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(6, ...(state?.seats.map((s, i) => seatPosition(s, i).col) || []))}, minmax(90px,1fr))`,
+            }}
+          >
             {state?.seats.length === 0 && (
               <div className="empty">운영자가 좌석을 준비하고 있어요.</div>
             )}
-            {state?.seats.map((s) => {
+            {state?.seats.map((s, i) => {
               const available = s.enabled && s.online && !s.session;
               return (
                 <button
                   key={s.id}
+                  style={{
+                    gridColumn: seatPosition(s, i).col,
+                    gridRow: seatPosition(s, i).row,
+                  }}
                   aria-label={`PC ${s.name} ${available ? "이용 가능" : "사용 불가"}`}
                   className={`seat ${available ? "available" : ""} ${selected === s.id ? "selected" : ""}`}
                   disabled={!available}
