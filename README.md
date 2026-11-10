@@ -45,3 +45,5 @@ Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](
 ### 무설치 통합 다운로드
 
 [PC-Club-Portable.zip 하나 받기](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Portable.zip). 한 번 압축 해제하면 학생용 `Station`과 관리자용 `Server` 폴더가 나옵니다. 학생 PC에서는 Station만 실행하세요.
+
+GitHub Pages의 브랜치 게시에서도 관리자 앱이 열리도록 저장소 루트의 `index.html`, `.nojekyll`, `pcclub-web/`에 빌드 결과를 함께 둡니다. 웹 코드 업데이트 시 `npm run build` 후 `node scripts/publish-web-root.mjs`를 실행하고 생성 파일도 커밋하세요. Pages 워크플로는 공개 주소의 앱 모듈과 빌드 표시 파일을 확인한 뒤 성공 처리합니다.

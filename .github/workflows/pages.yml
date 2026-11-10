@@ -38,16 +38,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/pages" --jq '{build_type: .build_type, source: .source}'
-          gh api --method PUT "repos/$GITHUB_REPOSITORY/pages" -f build_type=workflow
-          gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.build_type' | grep -Fx workflow
+          if ! gh api --method PUT "repos/$GITHUB_REPOSITORY/pages" -f build_type=workflow; then
+            echo "::warning::Automatic Pages source update is unavailable. The repository root also contains the compiled app; public delivery verification remains required."
+          fi
       - uses: actions/configure-pages@v5
         with:
           enablement: true
       - name: Mark the web artifact for delivery verification
         run: |
           touch dist/web/.nojekyll
-          printf '%s' "$GITHUB_SHA" > dist/web/pcclub-build.txt
+          python - <<'PYCODE'
+          import re
+          from pathlib import Path
+          html = Path('dist/web/index.html').read_text()
+          Path('dist/web/pcclub-build.txt').write_text(re.search(r'assets/[^"\s]+\.js', html)[0])
+          PYCODE
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/web
@@ -61,13 +66,20 @@ jobs:
           python - <<'PYCODE'
           import os, time, urllib.request
           base = os.environ['SITE_URL'].rstrip('/') + '/'
-          expected = os.environ['GITHUB_SHA']
+          from pathlib import Path
+          from urllib.parse import urljoin
+          expected = Path('dist/web/pcclub-build.txt').read_text().strip()
           for attempt in range(12):
               try:
                   nonce = str(int(time.time()))
                   build = urllib.request.urlopen(base + 'pcclub-build.txt?build=' + nonce, timeout=15).read().decode().strip()
                   page = urllib.request.urlopen(base + '?build=' + nonce, timeout=15).read().decode()
-                  if build == expected and 'id="root"' in page and 'type="module"' in page:
+                  if build == expected and expected in page and 'id="root"' in page and 'type="module"' in page:
+                      import re
+                      module = re.search(r'<script[^>]+src="([^"]+)"', page)
+                      if not module:
+                          raise ValueError('Missing app module')
+                      urllib.request.urlopen(urljoin(base, module[1]), timeout=15).read(100)
                       print('Public Pages URL serves the compiled PC Club app:', base + '#/admin')
                       break
                   print('Waiting for the compiled app to reach Pages CDN', attempt + 1)

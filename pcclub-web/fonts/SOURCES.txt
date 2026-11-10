@@ -1,0 +1,11 @@
+User-selected font assets bundled for offline operation.
+
+RoundedFixedsys / DungGeunMo:
+https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_six@1.2/DungGeunMo.woff
+Source project: https://github.com/projectnoonnu/noonfonts_six
+
+Yangjin:
+https://cdn.jsdelivr.net/gh/supernovice-lab/font@0.9/yangjin.woff
+Source project: https://github.com/supernovice-lab/font
+
+Font names and authors remain those of the original projects.
