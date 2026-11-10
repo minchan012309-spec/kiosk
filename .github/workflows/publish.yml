@@ -1,5 +1,5 @@
 name: Publish PC Club ZIP
-# Native Windows paths are used for the installer payload and icon resources.
+# Publish installed and unzip-and-run Windows distributions together.
 on:
   push:
     branches: [main]
@@ -44,6 +44,17 @@ jobs:
           Copy-Item release/station/*Setup*.exe release/Delivery/
           Copy-Item release/Supabase-Setup release/Delivery/ -Recurse
           Compress-Archive -Path release/Delivery/* -DestinationPath release/PC-Club-Installers.zip -CompressionLevel NoCompression
+      - name: Package unzip-and-run applications
+        shell: pwsh
+        run: |
+          foreach ($item in @(@{Role='server'; Name='Admin'}, @{Role='station'; Name='Station'})) {
+            $folder = "release/PC-Club-$($item.Name)-Portable"
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            Copy-Item "release/$($item.Role)/win-unpacked/*" $folder -Recurse
+            Copy-Item docs/PORTABLE-KO.md "$folder/사용방법.md"
+            Compress-Archive -Path $folder -DestinationPath "release/PC-Club-$($item.Name)-Portable.zip" -CompressionLevel Optimal
+          }
+          Compress-Archive -Path windows-lockdown/* -DestinationPath release/PC-Club-Windows-Lockdown.zip -CompressionLevel Optimal
       - name: Publish cloud release
         uses: softprops/action-gh-release@v2
         with:
@@ -53,6 +64,9 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release/PC-Club-Installers.zip
+            release/PC-Club-Admin-Portable.zip
+            release/PC-Club-Station-Portable.zip
+            release/PC-Club-Windows-Lockdown.zip
             release/Supabase-Setup.zip
             release/Supabase-Setup/001_club.sql
             release/Supabase-Setup/002_first_owner.sql
@@ -62,8 +76,9 @@ jobs:
             Supabase 클라우드 버전입니다. 로컬 서버는 실행하지 않습니다.
 
             1. Supabase-Setup.zip의 SQL·최초 소유자·Edge Function 설정을 먼저 완료하세요.
-            2. PC-Club-Installers.zip에서 Admin/Station을 설치하고 PC·키오스크를 등록하세요.
-            3. 사용자 PC에서 관리자 인증 후 실제 게임 실행 파일을 선택하세요.
+            2. 설치형은 PC-Club-Installers.zip, 무설치형은 Admin-Portable.zip / Station-Portable.zip을 선택하세요.
+            3. 무설치형은 ZIP 전체를 풀고 폴더 안의 PC Club Admin.exe / PC Club Station.exe를 실행하세요. PC·키오스크 등록은 동일합니다.
+            4. 사용자 PC에서 관리자 인증 후 실제 게임 실행 파일을 선택하세요.
 
             폰 관리자: https://minchan012309-spec.github.io/kiosk/#/admin
             관리자 여러 계정·권한, 여러 종료 비밀번호, 이름·로고·테마 설정을 지원합니다.
