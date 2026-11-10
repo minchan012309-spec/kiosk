@@ -29,3 +29,9 @@ Node.js 24 LTS로 `npm ci`, `npm run build`, `npm run dist:win`을 실행합니�
 ### Education / Enterprise 행사 계정
 
 Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](windows-lockdown/README-KO.md)를 추가 적용하세요. 앱 설치와 별개의 Windows 관리자 설정이며, 게임과 같은 입력의 선택적 허용에는 제한이 있습니다. 실제 Windows 적용 검증은 아직 하지 않았습니다.
+
+### 무설치형 Windows ZIP
+
+[관리자·키오스크용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.0/PC-Club-Admin-Portable.zip) · [학생 PC용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.0/PC-Club-Station-Portable.zip)
+
+전체 압축 해제 후 폴더 안 EXE를 실행하세요. [무설치 사용 안내](docs/PORTABLE-KO.md). 설정은 기존과 같이 Windows 사용자 AppData에 저장됩니다.
