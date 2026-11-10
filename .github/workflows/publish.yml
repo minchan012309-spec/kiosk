@@ -1,4 +1,5 @@
 name: Publish PC Club ZIP
+# Native Windows paths are used for the installer payload and icon resources.
 on:
   push:
     branches: [main]
