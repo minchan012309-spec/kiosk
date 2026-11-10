@@ -9,8 +9,22 @@
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ]
   },
-  "include": ["apps", "packages", "tests", "*.ts"]
+  "include": [
+    "apps",
+    "packages",
+    "tests",
+    "*.ts"
+  ],
+  "exclude": [
+    "supabase/functions"
+  ]
 }

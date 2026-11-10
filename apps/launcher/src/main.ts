@@ -4,19 +4,29 @@ import {
   ipcMain,
   dialog,
   screen,
+  globalShortcut,
   safeStorage,
   shell,
-  session,
 } from "electron";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  statSync,
+} from "node:fs";
+import { join, resolve, dirname, win32 } from "node:path";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
-import { X509Certificate } from "node:crypto";
-import { isIP } from "node:net";
+import { compareSync } from "bcryptjs";
 import { z } from "zod";
-import { startServer, localAddresses } from "../../server/src/startup";
-import { verifyPassword, createDomain } from "../../server/src/domain";
-import { parseConnection, requestApi, type Connection } from "./connection";
+import {
+  cloudRequest,
+  authorizeCloudOperator,
+} from "../../../packages/shared/src/cloud";
+import {
+  SUPABASE_URL,
+  WEB_URL,
+} from "../../../packages/shared/src/cloud-config";
 import { SessionClock, GameController, ExitGate } from "./runtime";
 import type { DeviceState } from "../../../packages/shared/src/contracts";
 declare const __APP_ROLE__: "server" | "station";
@@ -26,84 +36,112 @@ const ROLE =
       ? "server"
       : "station"
     : __APP_ROLE__;
-app.setName(ROLE === "server" ? "PC Club Server" : "PC Club Station");
-if (process.env.CAFE_DESKTOP_DATA)
-  app.setPath("userData", process.env.CAFE_DESKTOP_DATA);
-else app.setPath("userData", join(app.getPath("appData"), "PCClub", ROLE));
+app.setName(ROLE === "server" ? "PC Club Admin" : "PC Club Station");
+if (process.platform === "win32")
+  app.setAppUserModelId("school.pcclub." + ROLE);
+app.setPath(
+  "userData",
+  process.env.CAFE_DESKTOP_DATA || join(app.getPath("appData"), "PCClub", ROLE),
+);
 const single = app.requestSingleInstanceLock();
 if (!single) app.quit();
+const root = app.isPackaged ? app.getAppPath() : resolve("."),
+  webRoot = join(root, "dist/web"),
+  dataDir = app.getPath("userData"),
+  configFile = join(dataDir, "cloud-station.json");
 let main: BrowserWindow | undefined,
   overlay: BrowserWindow | undefined,
-  kiosk: BrowserWindow | undefined;
-let approvedQuit = false,
-  server: Awaited<ReturnType<typeof startServer>> | undefined,
+  kiosk: BrowserWindow | undefined,
+  approvedQuit = false;
+let token = "",
+  recoveryHash = "",
+  lastSessionId: string | null = null,
+  pendingEnd: string | null = null,
+  recoveryAttempts = 0,
+  recoveryBlockedUntil = 0;
+let localGamePaths: Record<string, string> = {},
+  operatorUntil = 0,
   deviceState: DeviceState | undefined,
   online = false,
   currentGame: string | undefined,
   lastError = "",
-  registered = false;
-let connection: Connection | undefined,
-  token = "",
+  lastStopError = "",
+  polling = false,
+  stopping = false;
+let shortcutWarning = "";
+let thankYouUntil = 0,
+  closeAttemptAt = 0,
+  closeNotice = "",
+  pendingClose = false;
+let serverNow = Date.now(),
+  serverReceived = performance.now(),
   gate: ExitGate | undefined,
-  recoveryHash = "",
-  recoveryAttempts = 0,
-  recoveryBlockedUntil = 0;
-const clock = new SessionClock();
-const children = new Map<number, ChildProcess>();
-let stopping = false;
-let lastStopError = "",
-  lastSessionId: string | null = null,
-  pendingEnd: string | null = null;
-const root = app.isPackaged ? app.getAppPath() : resolve(".");
-const webRoot = join(root, "dist/web");
-const preload = join(root, "dist/desktop/preload.cjs");
-const dataDir = app.getPath("userData");
-const configFile = join(dataDir, "station.json");
-const durableFile = join(dataDir, "command-state.json");
-let consumed: string[] = [];
+  consumed: string[] = [];
+const clock = new SessionClock(),
+  children = new Map<number, ChildProcess>();
+const trustedNow = () => serverNow + performance.now() - serverReceived;
 function saveConfig() {
   writeFileSync(
     configFile,
     JSON.stringify({
-      connection,
+      projectUrl: SUPABASE_URL,
       encryptedToken: token
         ? safeStorage.encryptString(token).toString("base64")
         : undefined,
       recoveryHash,
-      lastSessionId,
-      pendingEnd,
       recoveryAttempts,
       recoveryBlockedUntil,
+      lastSessionId,
+      pendingEnd,
+      localGamePaths,
+      consumed: consumed.slice(-500),
+      pendingClose,
     }),
     { mode: 0o600 },
   );
 }
 function loadConfig() {
   if (!existsSync(configFile)) return;
-  const v = JSON.parse(readFileSync(configFile, "utf8"));
-  if (v.connection) connection = parseConnection(v.connection);
-  if (v.encryptedToken) {
+  const c = JSON.parse(readFileSync(configFile, "utf8"));
+  if (c.projectUrl !== SUPABASE_URL) return;
+  localGamePaths = c.localGamePaths || {};
+  recoveryHash = c.recoveryHash || "";
+  recoveryAttempts = c.recoveryAttempts || 0;
+  recoveryBlockedUntil = c.recoveryBlockedUntil || 0;
+  lastSessionId = c.lastSessionId || null;
+  pendingEnd = c.pendingEnd || null;
+  consumed = c.consumed || [];
+  pendingClose = !!c.pendingClose;
+  if (c.encryptedToken) {
     if (!safeStorage.isEncryptionAvailable())
       throw Error("Windows 보안 저장소를 사용할 수 없습니다.");
-    token = safeStorage.decryptString(Buffer.from(v.encryptedToken, "base64"));
-    registered = true;
+    token = safeStorage.decryptString(Buffer.from(c.encryptedToken, "base64"));
   }
-  recoveryHash = v.recoveryHash || "";
-  lastSessionId = v.lastSessionId || null;
-  pendingEnd = v.pendingEnd || null;
-  recoveryAttempts = v.recoveryAttempts || 0;
-  recoveryBlockedUntil = v.recoveryBlockedUntil || 0;
-  if (existsSync(durableFile))
-    consumed = JSON.parse(readFileSync(durableFile, "utf8"));
+}
+function executablePath(input: string) {
+  let path = input.trim().replace(/^"(.*)"$/, "$1");
+  path = path.replace(/%([^%]+)%/g, (full, name) => {
+    const key = Object.keys(process.env).find(
+      (k) => k.toLowerCase() === String(name).toLowerCase(),
+    );
+    return key ? process.env[key] || full : full;
+  });
+  if (!win32.isAbsolute(path) || !path.toLowerCase().endsWith(".exe"))
+    throw Error(
+      "Windows 실행 파일(.exe)의 전체 경로가 필요합니다. 관리자 설정에서 파일을 직접 선택하세요.",
+    );
+  path = win32.normalize(path);
+  if (!existsSync(path) || !statSync(path).isFile())
+    throw Error(
+      `이 PC에 실행 파일이 없습니다: ${path}\n게임을 먼저 설치한 뒤 관리자 설정 → 이 PC 게임 경로에서 실행 파일을 선택하세요.`,
+    );
+  return path;
 }
 const games = new GameController(
-  async (executable, args) => {
+  async (path, args) => {
     if (process.platform !== "win32")
       throw Error("게임 실행은 Windows PC에서 지원합니다.");
-    if (!/^[A-Za-z]:\\.*\.exe$/i.test(executable) || !existsSync(executable))
-      throw Error(
-        "게임 실행 파일을 찾을 수 없습니다. 관리자에게 경로를 확인해 달라고 요청하세요.",
-      );
+    const executable = executablePath(path);
     return new Promise<number>((yes, no) => {
       const child = spawn(executable, args, {
         shell: false,
@@ -111,14 +149,16 @@ const games = new GameController(
         windowsHide: false,
         stdio: "ignore",
       });
-      child.once("error", no);
+      child.once("error", (e) =>
+        no(Error("게임 시작에 실패했습니다: " + e.message)),
+      );
       child.once("spawn", () => {
         children.set(child.pid!, child);
         yes(child.pid!);
       });
       child.once("exit", () => {
         children.delete(child.pid!);
-        currentGame = undefined;
+        if (!children.size) currentGame = undefined;
         pushState();
       });
     });
@@ -129,23 +169,25 @@ const games = new GameController(
       children.delete(pid);
       return;
     }
-    await new Promise<void>((yes, no) => {
+    await new Promise<void>((yes, no) =>
       execFile(
         "taskkill.exe",
         ["/PID", String(pid), "/T", "/F"],
         { windowsHide: true, timeout: 10000 },
-        (err) => {
-          if (err && child.exitCode === null && child.signalCode === null)
-            no(Error("게임을 종료하지 못했습니다. 운영자에게 알려 주세요."));
+        (error) => {
+          if (error && child.exitCode === null && child.signalCode === null)
+            no(Error("게임 종료에 실패했습니다. 운영자에게 알려 주세요."));
           else {
             children.delete(pid);
             yes();
           }
         },
-      );
-    });
+      ),
+    );
   },
 );
+const request = (path: string, body?: unknown, key?: string) =>
+  cloudRequest(path, body, token, key);
 function state() {
   return {
     ...(deviceState || {
@@ -159,72 +201,74 @@ function state() {
       exitRequests: [],
       serverNow: Date.now(),
     }),
-    registered,
-    configured: !!connection,
-    serverUrl: connection?.url,
+    cloud: true,
+    phase:
+      performance.now() < thankYouUntil
+        ? "thanks"
+        : deviceState?.session
+          ? "active"
+          : deviceState?.reservation
+            ? "login"
+            : "idle",
+    closeAttemptAt,
+    closeNotice,
+    registered: !!token,
+    configured: true,
+    serverUrl: SUPABASE_URL,
     online,
     remaining: deviceState?.session ? clock.remaining() : 0,
     currentGame,
-    error: lastStopError || lastError,
+    error: lastStopError || lastError || shortcutWarning,
+    operatorUnlocked: operatorUntil > Date.now(),
+    localGamePaths,
   };
 }
 function pushState() {
   for (const w of [main, overlay])
     if (w && !w.isDestroyed()) w.webContents.send("cafe:state", state());
 }
-async function request(path: string, body?: unknown, key?: string) {
-  if (!connection) throw Error("서버 연결 파일을 먼저 선택해 주세요.");
-  return requestApi(connection, path, body, token, key);
-}
 async function stopGame() {
   try {
     await games.stop();
-    lastStopError = "";
     currentGame = undefined;
-    pushState();
+    lastStopError = "";
   } catch (e) {
-    lastStopError =
-      "게임 종료를 재시도하고 있습니다. 운영자에게 알려 주세요. " +
-      (e as Error).message;
+    lastStopError = "게임 종료를 재시도하고 있습니다. " + (e as Error).message;
     throw e;
+  } finally {
+    pushState();
   }
 }
-async function quitApproved() {
-  await stopGame();
-  approvedQuit = true;
-  app.quit();
-}
-async function processCommands() {
+async function handleCommands() {
   if (!deviceState) return;
-  gate ??= new ExitGate(deviceState.device.id);
+  gate ??= new ExitGate(deviceState.device.id, trustedNow);
   for (const c of deviceState.commands) {
     if (consumed.includes(c.id) || !gate.consume(c)) continue;
     try {
       await stopGame();
+      if (c.type === "shutdown" && process.platform !== "win32")
+        throw Error("Windows PC에서만 종료할 수 있습니다.");
       await request("/device/commands/" + c.id + "/ack", {
         status: "accepted",
       });
       consumed.push(c.id);
-      writeFileSync(durableFile, JSON.stringify(consumed.slice(-500)), {
-        mode: 0o600,
-      });
+      saveConfig();
       if (c.type === "exit") {
-        await quitApproved();
+        approvedQuit = true;
+        app.quit();
         return;
       }
-      if (c.type === "shutdown") {
-        if (process.platform !== "win32")
-          throw Error("Windows 종료는 Windows PC에서만 지원합니다.");
-        // The accepted shutdown acknowledgment already ended this session atomically.
-        await new Promise<void>((yes, no) =>
-          execFile(
-            "shutdown.exe",
-            ["/s", "/t", "5"],
-            { windowsHide: true, timeout: 5000 },
-            (err) => (err ? no(err) : yes()),
-          ),
-        );
-      }
+      await new Promise<void>((yes, no) =>
+        execFile(
+          "shutdown.exe",
+          ["/s", "/t", "5"],
+          { windowsHide: true, timeout: 5000 },
+          (error) => (error ? no(error) : yes()),
+        ),
+      );
+      approvedQuit = true;
+      app.quit();
+      return;
     } catch (e) {
       lastError = (e as Error).message;
       try {
@@ -237,12 +281,19 @@ async function processCommands() {
     }
   }
 }
-let polling = false;
 async function poll() {
-  if (!token || !connection || polling) return;
+  if (!token || polling) return;
   polling = true;
   try {
     await request("/device/heartbeat", {});
+    if (pendingClose) {
+      await request("/device/exit-requests", {
+        reason: "Alt+F4 또는 종료 시도 차단",
+      });
+      pendingClose = false;
+      saveConfig();
+      closeNotice = "종료 시도를 차단하고 관리자에게 알림을 보냈습니다.";
+    }
     if (pendingEnd) {
       await request("/device/end", { sessionId: pendingEnd });
       pendingEnd = null;
@@ -250,72 +301,95 @@ async function poll() {
       saveConfig();
     }
     const next: DeviceState = await request("/device/state");
-    const hadSession = deviceState?.session?.id;
+    const had = deviceState?.session?.id;
+    const previousReservation = deviceState?.reservation?.id;
+    serverNow = next.serverNow;
+    serverReceived = performance.now();
+    deviceState = next;
     online = true;
     lastError = "";
-    deviceState = next;
+    if (next.session) clock.sync(next.serverNow, next.session.endAt!);
     if (lastSessionId !== (next.session?.id || null)) {
       lastSessionId = next.session?.id || null;
       saveConfig();
     }
-    if (next.session) clock.sync(next.serverNow, next.session.endAt!);
-    if (hadSession && !next.session) {
+    if (next.reservation && next.reservation.id !== previousReservation) {
+      main?.show();
+      main?.focus();
+    }
+    if (had && !next.session) {
+      thankYouUntil = performance.now() + 8000;
+      main?.setAlwaysOnTop(true);
+      main?.show();
+      main?.focus();
+      overlay?.hide();
       await stopGame();
       overlay?.hide();
       main?.show();
       main?.focus();
     }
-    await processCommands();
+    await handleCommands();
   } catch (e) {
     online = false;
-    lastError = "서버 연결을 확인해 주세요. " + (e as Error).message;
+    lastError = "클라우드 연결을 확인해 주세요. " + (e as Error).message;
   } finally {
     polling = false;
     pushState();
   }
 }
-function secureWindow(win: BrowserWindow, allow: (url: string) => boolean) {
-  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  win.webContents.on("will-navigate", (event, url) => {
-    if (!allow(url)) event.preventDefault();
-  });
-  win.webContents.on("will-redirect", (event, url) => {
-    if (!allow(url)) event.preventDefault();
-  });
-  win.webContents.on("will-attach-webview", (e) => e.preventDefault());
-}
 function makeWindow(extra: Electron.BrowserWindowConstructorOptions = {}) {
-  return new BrowserWindow({
+  const w = new BrowserWindow({
     width: 1360,
     height: 900,
     backgroundColor: "#f6f8f2",
+    icon: join(root, "dist/icon.png"),
     autoHideMenuBar: true,
     ...extra,
     webPreferences: {
-      preload,
-      contextIsolation: true,
+      preload: join(root, "dist/desktop/preload.cjs"),
       nodeIntegration: false,
+      contextIsolation: true,
       sandbox: true,
       ...extra.webPreferences,
     },
   });
+  w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  w.webContents.on("will-navigate", (e, url) => {
+    if (!url.startsWith("file://") || !url.includes("/dist/web/index.html"))
+      e.preventDefault();
+  });
+  w.webContents.on("will-attach-webview", (e) => e.preventDefault());
+  return w;
+}
+async function openKiosk() {
+  if (kiosk && !kiosk.isDestroyed()) {
+    kiosk.focus();
+    return;
+  }
+  kiosk = makeWindow({
+    fullscreen: true,
+    webPreferences: {
+      preload: undefined,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      partition: "cloud-kiosk",
+    },
+  });
+  await kiosk.loadFile(join(webRoot, "index.html"), { hash: "/kiosk" });
 }
 function openOverlay() {
-  if (!registered) return;
+  if (!token) return;
   if (!overlay) {
     overlay = makeWindow({
-      width: 650,
-      height: 800,
+      width: 670,
+      height: 820,
       frame: false,
       resizable: false,
       skipTaskbar: true,
       alwaysOnTop: true,
       show: false,
     });
-    secureWindow(
-      overlay,
-      (u) => u.startsWith("file://") && u.includes("/dist/web/index.html"),
-    );
     void overlay.loadFile(join(webRoot, "index.html"), { hash: "/overlay" });
     overlay.on("close", (e) => {
       if (!approvedQuit) {
@@ -324,96 +398,91 @@ function openOverlay() {
       }
     });
   }
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const wa = display.workArea;
+  const wa = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  ).workArea;
   overlay.setBounds({
-    x: wa.x + Math.max(0, wa.width - 650),
+    x: wa.x + Math.max(0, wa.width - 670),
     y: wa.y,
-    width: Math.min(650, wa.width),
-    height: Math.min(800, wa.height),
+    width: Math.min(670, wa.width),
+    height: Math.min(820, wa.height),
   });
   overlay.setAlwaysOnTop(true, "screen-saver");
   overlay.show();
   overlay.focus();
   pushState();
 }
-function trustServerCertificate(certPem: string, allowedHost: string) {
-  const cert = new X509Certificate(certPem);
-  session.defaultSession.setCertificateVerifyProc((req, callback) => {
-    try {
-      const presented = new X509Certificate(req.certificate.data);
-      const host = req.hostname;
-      const valid =
-        host === allowedHost &&
-        presented.fingerprint256 === cert.fingerprint256 &&
-        Date.parse(cert.validTo) > Date.now() &&
-        (isIP(host) ? cert.checkIP(host) : cert.checkHost(host));
-      callback(valid ? 0 : -3);
-    } catch {
-      callback(-3);
-    }
-  });
+function installExitShortcut() {
+  if (
+    process.platform === "win32" &&
+    token &&
+    !globalShortcut.isRegistered("Alt+F4")
+  ) {
+    const ok = globalShortcut.register("Alt+F4", () => blockedClose("Alt+F4"));
+    if (!ok)
+      shortcutWarning =
+        "Alt+F4 전역 차단을 등록하지 못했습니다. 다른 단축키 프로그램을 종료하고 런처를 다시 실행하세요.";
+  }
 }
-async function openServer() {
-  server = await startServer({
-    dataDir: join(dataDir, "server"),
-    webRoot,
-    port: Number(process.env.CAFE_DESKTOP_PORT || 8443),
-  });
-  trustServerCertificate(server.tls.cert, "localhost");
-  main = makeWindow();
-  secureWindow(main, (u) => u.startsWith(server!.url + "/"));
-  await main.loadURL(server.url + "/admin");
-  main.on("close", (e) => {
-    if (!approvedQuit) {
-      e.preventDefault();
-      void dialog
-        .showMessageBox(main!, {
-          type: "warning",
-          buttons: ["계속 운영", "서버 종료"],
-          defaultId: 0,
-          cancelId: 0,
-          message: "서버를 종료하면 모든 PC의 주문·연장·로그인이 중단됩니다.",
-          detail: "진행 중인 이용 시간은 각 PC에서 계속 흐릅니다.",
-        })
-        .then(async (r) => {
-          if (r.response === 1) {
-            approvedQuit = true;
-            await server!.app.close();
-            server!.db.close();
-            app.quit();
-          }
-        });
-    }
-  });
+function blockedClose(reason: string) {
+  if (!token || Date.now() - closeAttemptAt < 1500) return;
+  closeAttemptAt = Date.now();
+  pendingClose = true;
+  closeNotice = reason + "를 차단했습니다. 관리자에게 알림을 전달합니다.";
+  try {
+    saveConfig();
+  } catch {
+    lastError = "종료 시도 알림을 저장하지 못했습니다. 운영자에게 알려 주세요.";
+  }
+  openOverlay();
+  pushState();
+  if (online)
+    void request("/device/exit-requests", { reason })
+      .then(() => {
+        pendingClose = false;
+        saveConfig();
+        closeNotice = "종료 시도를 차단하고 관리자에게 알림을 보냈습니다.";
+        pushState();
+      })
+      .catch(() => {
+        closeNotice =
+          "종료를 차단했습니다. 연결이 복구되면 관리자에게 알림을 보냅니다.";
+        pushState();
+      });
 }
-async function openStation() {
+async function start() {
+  mkdirSync(dataDir, { recursive: true });
+  if (ROLE === "server") {
+    main = makeWindow();
+    await main.loadFile(join(webRoot, "index.html"), { hash: "/admin" });
+    return;
+  }
   loadConfig();
-  main = makeWindow({ fullscreen: true, kiosk: false });
-  secureWindow(
-    main,
-    (u) => u.startsWith("file://") && u.includes("/dist/web/index.html"),
-  );
+  installExitShortcut();
+  main = makeWindow({ fullscreen: true });
   await main.loadFile(join(webRoot, "index.html"), { hash: "/launcher" });
   main.on("close", (e) => {
     if (!approvedQuit) {
       e.preventDefault();
-      if (registered) openOverlay();
-      else main?.webContents.send("cafe:state", state());
+      if (token) blockedClose("창 닫기 시도");
+    }
+  });
+  main.webContents.on("before-input-event", (event, input) => {
+    if (input.alt && input.key === "F4") {
+      event.preventDefault();
+      blockedClose("Alt+F4");
     }
   });
   main.on("leave-full-screen", () => {
     if (!approvedQuit) main?.setFullScreen(true);
   });
-  await poll();
+  void poll();
   let hoverStart = 0;
   setInterval(() => {
-    if (!registered || overlay?.isVisible()) return;
+    if (!token || overlay?.isVisible()) return;
     const cursor = screen.getCursorScreenPoint(),
-      bounds = screen.getDisplayNearestPoint(cursor).bounds;
-    const corner =
-      cursor.x >= bounds.x + bounds.width - 18 && cursor.y < bounds.y + 18;
-    if (corner) {
+      b = screen.getDisplayNearestPoint(cursor).bounds;
+    if (cursor.x >= b.x + b.width - 18 && cursor.y < b.y + 18) {
       hoverStart ||= performance.now();
       if (performance.now() - hoverStart >= 1000) {
         openOverlay();
@@ -429,16 +498,23 @@ async function openStation() {
       !stopping
     ) {
       stopping = true;
+      if (deviceState?.session && clock.remaining() <= 0) {
+        deviceState.session = null;
+        thankYouUntil = performance.now() + 8000;
+        main?.setAlwaysOnTop(true);
+        main?.show();
+        main?.focus();
+        overlay?.hide();
+      }
       void stopGame()
         .then(() => {
-          deviceState!.session = null;
+          if (deviceState) deviceState.session = null;
+          thankYouUntil = performance.now() + 8000;
           overlay?.hide();
           main?.show();
           main?.focus();
         })
-        .catch((e) => {
-          lastError = e.message;
-        })
+        .catch(() => {})
         .finally(() => {
           stopping = false;
           pushState();
@@ -447,160 +523,56 @@ async function openStation() {
     pushState();
   }, 500).unref();
 }
-function requireAdminSender(sender: Electron.WebContents) {
-  if (ROLE !== "server" || sender !== main?.webContents)
-    throw Error("서버 관리자 화면에서만 사용할 수 있습니다.");
-  const url = new URL(sender.getURL());
-  if (
-    url.origin !== server?.url ||
-    !(url.hash === "#/admin" || (!url.hash && url.pathname === "/admin"))
-  )
-    throw Error("관리자 화면에서만 사용할 수 있습니다.");
-}
 ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
-  if (![main?.webContents, overlay?.webContents].includes(event.sender))
-    throw Error("신뢰할 수 없는 화면입니다.");
+  if (
+    ![main?.webContents, overlay?.webContents].includes(event.sender) ||
+    event.senderFrame !== event.sender.mainFrame
+  )
+    throw Error("허용하지 않은 화면입니다.");
+  if (action === "hostInfo")
+    return {
+      role: ROLE,
+      cloud: true,
+      projectUrl: SUPABASE_URL,
+      webUrl: WEB_URL,
+    };
   if (ROLE === "server") {
-    requireAdminSender(event.sender);
-    if (action === "resetAdmin") {
-      const result = await dialog.showMessageBox(main!, {
-        type: "warning",
-        buttons: ["취소", "관리자 비밀번호 초기화"],
-        defaultId: 0,
-        cancelId: 0,
-        message: "이 서버 PC에서 관리자 비밀번호를 초기화할까요?",
-        detail:
-          "현재 관리자 로그인은 해제됩니다. 좌석·이용 시간·주문 데이터는 유지됩니다.",
-      });
-      if (result.response !== 1) return false;
-      createDomain(server!.db).resetAdmin();
-      await main!.reload();
-      return true;
-    }
-    if (action === "hostInfo")
-      return {
-        role: "server",
-        addresses: localAddresses(),
-        port: Number(process.env.CAFE_DESKTOP_PORT || 8443),
-        setupToken: createDomain(server!.db).isSetup()
-          ? undefined
-          : server!.setupToken,
-      };
-    if (action === "openData") {
-      await shell.openPath(join(dataDir, "server"));
-      return true;
-    }
     if (action === "openKiosk") {
-      if (kiosk && !kiosk.isDestroyed()) {
-        kiosk.focus();
-        return true;
-      }
-      kiosk = makeWindow({
-        fullscreen: true,
-        webPreferences: {
-          preload: undefined,
-          contextIsolation: true,
-          nodeIntegration: false,
-          sandbox: true,
-          partition: "kiosk",
-        },
-      });
-      const kioskSession = kiosk.webContents.session;
-      const cert = new X509Certificate(server!.tls.cert);
-      kioskSession.setCertificateVerifyProc((r, cb) => {
-        try {
-          cb(
-            r.hostname === "localhost" &&
-              new X509Certificate(r.certificate.data).fingerprint256 ===
-                cert.fingerprint256
-              ? 0
-              : -3,
-          );
-        } catch {
-          cb(-3);
-        }
-      });
-      secureWindow(kiosk, (u) => u === server!.url + "/kiosk");
-      await kiosk.loadURL(server!.url + "/kiosk");
+      await openKiosk();
       return true;
     }
-    if (action === "exportConnection") {
-      const addresses = localAddresses();
-      if (!addresses.length)
-        throw Error(
-          "연결된 네트워크가 없습니다. 먼저 행사장 Wi-Fi 또는 유선 LAN에 연결하세요.",
-        );
-      const choices = addresses.map(
-        (ip) =>
-          "https://" + ip + ":" + Number(process.env.CAFE_DESKTOP_PORT || 8443),
-      );
-      const pick =
-        choices.length === 1
-          ? 0
-          : (
-              await dialog.showMessageBox(main!, {
-                type: "question",
-                message: "사용자 PC와 같은 네트워크의 서버 주소를 선택하세요.",
-                buttons: [...choices, "취소"],
-                cancelId: choices.length,
-              })
-            ).response;
-      if (pick >= choices.length) return false;
-      const c = parseConnection({
-        version: 1,
-        url: choices[pick],
-        cert: server!.tls.cert,
-      });
-      const file = await dialog.showSaveDialog(main!, {
-        title: "PC 연결 파일 저장",
-        defaultPath: "Festival-PC-Club.pcclub",
-        filters: [{ name: "PC Club 연결 파일", extensions: ["pcclub"] }],
-      });
-      if (file.canceled || !file.filePath) return false;
-      writeFileSync(file.filePath, JSON.stringify(c, null, 2));
+    if (action === "openWeb") {
+      await shell.openExternal(WEB_URL + "#/admin");
       return true;
     }
-    throw Error("허용하지 않은 서버 동작입니다.");
+    if (action === "openData") {
+      await shell.openPath(dataDir);
+      return true;
+    }
+    throw Error("클라우드 관리 콘솔에서 지원하지 않는 동작입니다.");
   }
-  if (action === "hostInfo") return { role: "station" };
   if (action === "state") return state();
   if (action === "quitUnregistered") {
-    if (registered) throw Error("관리자 승인이 필요합니다.");
+    if (token) throw Error("관리자 승인이 필요합니다.");
     approvedQuit = true;
     app.quit();
     return true;
   }
-  if (action === "importConnection") {
-    if (registered) throw Error("PC 등록 후에는 연결 설정을 바꿀 수 없습니다.");
-    const file = await dialog.showOpenDialog(main!, {
-      properties: ["openFile"],
-      filters: [{ name: "PC Club 연결 파일", extensions: ["pcclub"] }],
-    });
-    if (file.canceled) return state();
-    connection = parseConnection(
-      JSON.parse(readFileSync(file.filePaths[0], "utf8")),
-    );
-    await request("/health");
-    saveConfig();
-    pushState();
-    return state();
-  }
   if (action === "enroll") {
-    if (registered) throw Error("이미 등록된 PC입니다.");
-    if (!safeStorage.isEncryptionAvailable())
-      throw Error("보안 저장소를 사용할 수 없습니다.");
+    if (token) throw Error("이미 등록된 PC입니다.");
     if (
-      process.platform === "linux" &&
-      safeStorage.getSelectedStorageBackend() === "basic_text"
+      !safeStorage.isEncryptionAvailable() ||
+      (process.platform === "linux" &&
+        safeStorage.getSelectedStorageBackend() === "basic_text")
     )
       throw Error(
-        "보안 키 저장소를 사용할 수 없습니다. Windows 노트북에서 등록하세요.",
+        "보안 저장소를 사용할 수 없습니다. Windows 노트북에서 등록하세요.",
       );
-    const input = z.object({ code: z.string().min(1).max(20) }).parse(payload);
-    const r = await request("/device/enroll", { code: input.code });
+    const p = z.object({ code: z.string().min(1).max(20) }).parse(payload);
+    const r = await request("/device/enroll", p);
     token = r.token;
     recoveryHash = r.recoveryHash;
-    registered = true;
+    installExitShortcut();
     saveConfig();
     await poll();
     return { state: state(), recoveryCode: r.recoveryCode };
@@ -614,12 +586,12 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
       .object({ code: z.string().min(1).max(128) })
       .parse(payload).code;
     if (Date.now() < recoveryBlockedUntil)
-      throw Error("비상 코드 입력이 잠겼습니다. 5분 후 다시 시도하세요.");
-    if (!verifyPassword(code.trim().toUpperCase(), recoveryHash)) {
+      throw Error("5회 오입력으로 잠겼습니다. 5분 후 다시 시도하세요.");
+    if (!compareSync(code.trim().toUpperCase(), recoveryHash)) {
       recoveryAttempts++;
       if (recoveryAttempts >= 5) {
-        recoveryBlockedUntil = Date.now() + 300_000;
         recoveryAttempts = 0;
+        recoveryBlockedUntil = Date.now() + 300000;
       }
       saveConfig();
       throw Error("비상 종료 코드가 다릅니다.");
@@ -628,34 +600,65 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
     if (lastSessionId) {
       pendingEnd = lastSessionId;
       saveConfig();
-    }
-    try {
-      if (lastSessionId) {
+      try {
         if (online) {
           await request("/device/end", { sessionId: pendingEnd });
           pendingEnd = null;
           lastSessionId = null;
           saveConfig();
         }
-      }
-    } catch {}
+      } catch {}
+    }
     approvedQuit = true;
     app.quit();
     return true;
   }
-  if (!registered) throw Error("먼저 PC를 등록하세요.");
+  if (!token) throw Error("먼저 PC를 등록하세요.");
+  if (action === "adminUnlock") {
+    const p = z
+      .object({
+        email: z.string().email(),
+        password: z.string().min(1).max(128),
+      })
+      .parse(payload);
+    await authorizeCloudOperator(p.email, p.password);
+    operatorUntil = Date.now() + 300000;
+    pushState();
+    return true;
+  }
+  if (action === "configureGame") {
+    if (operatorUntil <= Date.now())
+      throw Error("게임 경로 설정을 위해 관리자 인증이 필요합니다.");
+    const id = z.object({ gameId: z.string() }).parse(payload).gameId;
+    if (!deviceState?.games.some((g) => g.id === id))
+      throw Error("등록된 게임이 아닙니다.");
+    const file = await dialog.showOpenDialog(main!, {
+      title: "이 PC에 설치된 게임 실행 파일 선택",
+      properties: ["openFile"],
+      filters: [{ name: "Windows 실행 파일", extensions: ["exe"] }],
+    });
+    if (file.canceled) return null;
+    localGamePaths[id] = executablePath(file.filePaths[0]);
+    saveConfig();
+    pushState();
+    return { path: localGamePaths[id] };
+  }
   if (action === "stopGame") {
     await stopGame();
     return true;
   }
-  if (!online) throw Error("서버에 연결된 동안만 사용할 수 있습니다.");
+  if (!online) throw Error("클라우드 연결 중에만 사용할 수 있습니다.");
   if (action === "login") {
     if (pendingEnd || (!deviceState?.session && games.running))
-      throw Error("이전 이용 종료를 처리하고 있습니다. 잠시 기다려 주세요.");
-    const p = z.object({ code: z.string().regex(/^\d{10}$/) }).parse(payload);
-    const r = await request("/device/login", p);
+      throw Error("이전 이용 종료를 처리 중입니다.");
+    const p = z
+      .object({ password: z.string().regex(/^[0-9]{4,6}$/) })
+      .parse(payload);
+    const result = await request("/device/login", p);
+    main?.setAlwaysOnTop(false);
+    thankYouUntil = 0;
     await poll();
-    return r;
+    return result;
   }
   if (action === "launchGame") {
     if (!deviceState?.session || clock.remaining() <= 0)
@@ -663,7 +666,10 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
     const id = z.object({ gameId: z.string() }).parse(payload).gameId;
     const game = deviceState.games.find((g) => g.id === id && g.enabled);
     if (!game) throw Error("등록된 게임이 아닙니다.");
-    await games.start(game);
+    await games.start({
+      ...game,
+      executable: localGamePaths[id] || game.executable,
+    });
     currentGame = id;
     overlay?.hide();
     pushState();
@@ -679,18 +685,18 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
             .object({ extensionId: z.string(), key: z.string().uuid() })
             .parse(payload);
     const { key, ...body } = p;
-    const r = await request(
+    const result = await request(
       action === "purchase" ? "/device/orders" : "/device/extensions",
       body,
       key,
     );
     await poll();
-    return r;
+    return result;
   }
   if (action === "requestExit") {
-    const r = await request("/device/exit-requests", {});
+    const result = await request("/device/exit-requests", {});
     await poll();
-    return r;
+    return result;
   }
   if (action === "exitPassword") {
     const p = z.object({ password: z.string().min(1).max(128) }).parse(payload);
@@ -705,26 +711,23 @@ app.on("second-instance", () => {
   main?.focus();
 });
 app.on("before-quit", (e) => {
-  if (!approvedQuit && registered) {
+  if (ROLE === "station" && token && !approvedQuit) {
     e.preventDefault();
-    openOverlay();
+    blockedClose("프로그램 종료 시도");
   }
+});
+app.on("will-quit", () => globalShortcut.unregisterAll());
+app.on("window-all-closed", () => {
+  if (ROLE === "server" || approvedQuit || !token) app.quit();
 });
 app.whenReady().then(async () => {
   if (!single) return;
-  mkdirSync(dataDir, { recursive: true });
   try {
-    if (ROLE === "server") await openServer();
-    else await openStation();
+    await start();
   } catch (e) {
-    dialog.showErrorBox(
-      "PC Club 시작 오류",
-      (e as Error).message + "\n설정 폴더: " + dataDir,
-    );
+    console.error("PC Club startup:", (e as Error).message);
+    dialog.showErrorBox("PC Club 시작 오류", (e as Error).message);
     approvedQuit = true;
     app.quit();
   }
-});
-app.on("window-all-closed", () => {
-  if (approvedQuit || !registered) app.quit();
 });

@@ -38,13 +38,14 @@ Section "Install"
  SetShellVarContext current
  SetOutPath "$INSTDIR"
  File /r "@SOURCE@/*"
+ File /oname=pcclub.ico "@ICON@"
  FileOpen $0 "$INSTDIR\.pcclub-@ROLE@" w
  FileWrite $0 "@PRODUCT@ @VERSION@"
  FileClose $0
  WriteUninstaller "$INSTDIR\Uninstall.exe"
  CreateDirectory "$SMPROGRAMS\@PRODUCT@"
- CreateShortcut "$SMPROGRAMS\@PRODUCT@\@PRODUCT@.lnk" "$INSTDIR\@PRODUCT@.exe"
- CreateShortcut "$DESKTOP\@PRODUCT@.lnk" "$INSTDIR\@PRODUCT@.exe"
+ CreateShortcut "$SMPROGRAMS\@PRODUCT@\@PRODUCT@.lnk" "$INSTDIR\@PRODUCT@.exe" "" "$INSTDIR\pcclub.ico"
+ CreateShortcut "$DESKTOP\@PRODUCT@.lnk" "$INSTDIR\@PRODUCT@.exe" "" "$INSTDIR\pcclub.ico"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCClub-@ROLE@" "DisplayName" "@PRODUCT@"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCClub-@ROLE@" "DisplayVersion" "@VERSION@"
  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PCClub-@ROLE@" "Publisher" "PC Club"

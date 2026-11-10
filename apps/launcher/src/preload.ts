@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 const allowed = new Set([
   "resetAdmin",
   "hostInfo",
+  "openWeb",
+  "adminUnlock",
+  "configureGame",
   "exportConnection",
   "openData",
   "openKiosk",

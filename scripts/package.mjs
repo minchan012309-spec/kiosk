@@ -1,15 +1,23 @@
 import { build, Platform, Arch } from "electron-builder";
-import { cpSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { resolve } from "node:path";
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 for (const role of ["server", "station"]) {
   const dir = resolve(".data/package-" + role);
+  rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   cpSync("dist/web", dir + "/dist/web", { recursive: true });
+  cpSync("dist/icon.png", dir + "/dist/icon.png");
   mkdirSync(dir + "/dist/desktop", { recursive: true });
   cpSync("dist/desktop/" + role + ".cjs", dir + "/dist/desktop/main.cjs");
   cpSync("dist/desktop/preload.cjs", dir + "/dist/desktop/preload.cjs");
-  const product = role === "server" ? "PC Club Server" : "PC Club Station";
+  const product = role === "server" ? "PC Club Admin" : "PC Club Station";
   const installer = resolve(".data/installer-" + role + ".nsi");
   const script = readFileSync("scripts/installer.nsi", "utf8")
     .replaceAll("@PRODUCT@", product)
@@ -44,7 +52,9 @@ for (const role of ["server", "station"]) {
       files: ["dist/**/*", "package.json"],
       npmRebuild: false,
       win: {
-        signAndEditExecutable: false,
+        signAndEditExecutable: process.platform === "win32",
+        signExecutable: false,
+        icon: resolve("build/icon.ico"),
         artifactName: "PC-Club-" + role + "-${version}-${arch}.${ext}",
       },
       nsis: {

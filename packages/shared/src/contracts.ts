@@ -41,6 +41,9 @@ export const gameSchema = z
 export const settingsSchema = z
   .object({
     title: text,
+    subtitle: z.string().max(100).optional(),
+    logoUrl: z.string().max(2000).optional(),
+    defaultTheme: z.enum(["light", "dark", "system"]).optional(),
     initialSeconds: integer.min(60).max(86400),
     initialMoney: integer,
     reservationSeconds: integer.min(60).max(3600),
@@ -98,6 +101,7 @@ export type Command = {
   message?: string;
 };
 export type ExitRequest = {
+  reason?: string;
   id: string;
   deviceId: string;
   seatId: string;
@@ -123,6 +127,7 @@ export type PublicState = {
   serverNow: number;
 };
 export type DeviceState = {
+  reservation?: Omit<Session, "codeHash" | "code" | "studentId"> | null;
   device: { id: string; seatId: string; seatName: string };
   session: Omit<Session, "codeHash" | "code"> | null;
   products: Product[];
@@ -134,6 +139,16 @@ export type DeviceState = {
   serverNow: number;
 };
 export type AdminState = {
+  profile?: {
+    id: string;
+    email: string;
+    display_name: string;
+    role: string;
+    permissions: string[];
+    active: boolean;
+  };
+  accounts?: any[];
+  exitPasswords?: any[];
   settings: Settings;
   seats: (PublicSeat & { deviceId?: string })[];
   sessions: Omit<Session, "codeHash" | "code">[];

@@ -1,3 +1,10 @@
+import { confirmInApp as confirm } from "../dialogs";
+import {
+  AccountsPanel,
+  BrandingPanel,
+  ExitPasswordsPanel,
+} from "./CloudPanels";
+import { WEB_URL } from "../../../../packages/shared/src/cloud-config";
 import { PendingOperations } from "../../../../packages/shared/src/operations";
 import { useEffect, useRef, useState } from "react";
 import type {
@@ -17,6 +24,9 @@ const tabs = [
   "게임 관리",
   "운영 설정",
   "활동 기록",
+  "관리자 / 권한",
+  "브랜드 / 테마",
+  "종료 비밀번호",
 ];
 const orderLabels: Record<string, string> = {
   received: "접수",
@@ -26,6 +36,21 @@ const orderLabels: Record<string, string> = {
 };
 export function Admin() {
   const [state, setState] = useState<AdminState>();
+  const allowed = (p: string) =>
+    !!state?.profile &&
+    (state.profile.role === "owner" || state.profile.permissions.includes(p));
+  const tabPermissions = [
+    "dashboard.view",
+    "seats.manage",
+    "orders.manage",
+    "catalog.manage",
+    "games.manage",
+    "settings.manage",
+    "audit.view",
+    "accounts.manage",
+    "settings.manage",
+    "settings.manage",
+  ];
   const [logged, setLogged] = useState(false);
   const [needSetup, setNeedSetup] = useState(false);
   const [ready, setReady] = useState(false);
@@ -111,7 +136,7 @@ export function Admin() {
         needSetup ? "/bootstrap" : "/admin/login",
         needSetup
           ? { token: setupToken, password: data.get("password") }
-          : { password: data.get("password") },
+          : { email: data.get("email"), password: data.get("password") },
       );
       setNeedSetup(false);
       await refresh();
@@ -146,6 +171,16 @@ export function Admin() {
               </label>
             )}
             <label>
+              관리자 이메일
+              <input
+                name="email"
+                type="email"
+                required
+                autoComplete="username"
+                placeholder="owner@example.com"
+              />
+            </label>
+            <label>
               관리자 비밀번호
               <input
                 name="password"
@@ -167,7 +202,11 @@ export function Admin() {
               {busy ? "확인 중…" : needSetup ? "관리자 설정 완료" : "로그인"}
             </button>
           </form>
-          {host?.role === "server" && !needSetup && (
+          <p className="fine">
+            처음 설정한다면 SQL 설치와 최초 소유자 계정 등록을 먼저 완료하세요.
+            비밀번호를 잊었다면 소유자에게 재설정을 요청하세요.
+          </p>
+          {host?.role === "server" && !host?.cloud && !needSetup && (
             <button
               className="subtle wide"
               onClick={() =>
@@ -225,23 +264,28 @@ export function Admin() {
         <Brand />
         <div className="eyebrow">OPERATIONS</div>
         <nav>
-          {tabs.map((t, i) => (
-            <button
-              key={t}
-              className={tab === t ? "active" : ""}
-              onClick={() => {
-                setTab(t);
-                setEditing(null);
-              }}
-            >
-              <span>{["◈", "▦", "▤", "◉", "▷", "⚙", "≡"][i]}</span>
-              {t}
-              {i === 2 &&
-                state?.orders.some((o) => o.status === "received") && (
-                  <i className="dot" />
-                )}
-            </button>
-          ))}
+          {tabs.map(
+            (t, i) =>
+              allowed(tabPermissions[i]) && (
+                <button
+                  key={t}
+                  className={tab === t ? "active" : ""}
+                  onClick={async () => {
+                    setTab(t);
+                    setEditing(null);
+                  }}
+                >
+                  <span>
+                    {["◈", "▦", "▤", "◉", "▷", "⚙", "≡", "♙", "◐", "⌑"][i]}
+                  </span>
+                  {t}
+                  {i === 2 &&
+                    state?.orders.some((o) => o.status === "received") && (
+                      <i className="dot" />
+                    )}
+                </button>
+              ),
+          )}
         </nav>
         <a
           className="kiosk-link"
@@ -259,10 +303,10 @@ export function Admin() {
         </a>
         <div className="sidebar-bottom">
           <span className="badge">
-            <i /> SERVER ONLINE
+            <i /> SUPABASE CLOUD
           </span>
           <button
-            onClick={() => {
+            onClick={async () => {
               void api("/admin/logout", {}).then(() => setLogged(false));
             }}
           >
@@ -279,6 +323,13 @@ export function Admin() {
           <span className="muted">{new Date(now).toLocaleString("ko-KR")}</span>
         </header>
         <ErrorMessage message={error} />
+        {pending.length > 0 && tab !== tabs[0] && (
+          <div className="notice" role="status">
+            PC {pending.map((r) => seatName(r.seatId)).join(", ")} · 종료 시도 /
+            승인 요청 {pending.length}건
+            <button onClick={() => setTab(tabs[0])}>확인하기</button>
+          </div>
+        )}
         {notice && (
           <div className="notice" role="status">
             {notice}
@@ -320,11 +371,14 @@ export function Admin() {
                   <div className="list-row" key={r.id}>
                     <span>
                       <strong>PC {seatName(r.seatId)}</strong>
-                      <small>기기에서 프로그램 종료를 요청했습니다.</small>
+                      <small>
+                        기기에서 프로그램 종료를 요청했습니다.{" "}
+                        {(r as any).reason || ""}
+                      </small>
                     </span>
                     <div className="actions">
                       <button
-                        disabled={busy}
+                        disabled={busy || !allowed("exit.approve")}
                         onClick={() =>
                           void mutate("/admin/exit-requests/" + r.id, {
                             approve: false,
@@ -335,7 +389,7 @@ export function Admin() {
                       </button>
                       <button
                         className="primary"
-                        disabled={busy}
+                        disabled={busy || !allowed("exit.approve")}
                         onClick={() =>
                           void mutate("/admin/exit-requests/" + r.id, {
                             approve: true,
@@ -400,15 +454,21 @@ export function Admin() {
                           <td>{money(s.money)} M</td>
                           <td>
                             <div className="actions">
-                              <button onClick={() => setAdjust(s.id)}>
+                              <button
+                                disabled={
+                                  !allowed("time.adjust") &&
+                                  !allowed("money.adjust")
+                                }
+                                onClick={() => setAdjust(s.id)}
+                              >
                                 시간 / 머니
                               </button>
                               <button
                                 className="danger"
-                                disabled={busy}
-                                onClick={() => {
+                                disabled={busy || !allowed("session.end")}
+                                onClick={async () => {
                                   if (
-                                    confirm(
+                                    await confirm(
                                       "실행 중인 게임이 닫힙니다. 이용을 종료할까요?",
                                     )
                                   )
@@ -418,7 +478,7 @@ export function Admin() {
                                     );
                                 }}
                               >
-                                이용 종료
+                                킥 / 이용 종료
                               </button>
                             </div>
                           </td>
@@ -437,6 +497,21 @@ export function Admin() {
           <>
             <section className="panel">
               <h2>좌석 추가</h2>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const r = await api("/admin/kiosks/enrollment", {});
+                    setNotice(
+                      "키오스크 연결 코드: " +
+                        r.code +
+                        " · 키오스크 화면에 입력하세요. 10분간 유효합니다.",
+                    );
+                  })
+                }
+              >
+                키오스크 연결 코드 발급
+              </button>
               <form
                 className="inline-form"
                 onSubmit={async (e) => {
@@ -505,10 +580,15 @@ export function Admin() {
                   </div>
                   <button
                     className="danger wide"
-                    disabled={busy || !s.online || !s.deviceId}
-                    onClick={() => {
+                    disabled={
+                      busy ||
+                      !allowed("pc.shutdown") ||
+                      !s.online ||
+                      !s.deviceId
+                    }
+                    onClick={async () => {
                       if (
-                        confirm(
+                        await confirm(
                           `PC ${s.name}의 Windows를 종료합니다. 저장하지 않은 데이터가 사라질 수 있습니다. 진행할까요?`,
                         )
                       )
@@ -597,9 +677,11 @@ export function Admin() {
                     {o.status !== "cancelled" && (
                       <button
                         disabled={busy}
-                        onClick={() => {
+                        onClick={async () => {
                           if (
-                            confirm("주문을 취소하고 머니와 재고를 복구할까요?")
+                            await confirm(
+                              "주문을 취소하고 머니와 재고를 복구할까요?",
+                            )
                           )
                             void mutate("/admin/orders/" + o.id, {
                               status: "cancelled",
@@ -907,7 +989,7 @@ export function Admin() {
             <div>
               <section className="panel">
                 <h2>PC 연결 설정</h2>
-                {host?.role === "server" ? (
+                {host?.role === "server" && !host?.cloud ? (
                   <>
                     <p>
                       아래 연결 파일을 사용자 PC로 복사하고 런처에서 불러오세요.
@@ -938,8 +1020,8 @@ export function Admin() {
                   </>
                 ) : (
                   <p className="muted">
-                    서버 프로그램의 운영 설정에서 연결 파일을 저장할 수
-                    있습니다.
+                    Supabase에 직접 연결합니다. PC 런처에는 좌석 등록 코드만
+                    입력하세요. 폰 관리자 주소: {WEB_URL}#/admin
                   </p>
                 )}
               </section>
@@ -987,8 +1069,12 @@ export function Admin() {
                 <button
                   className="danger"
                   disabled={busy}
-                  onClick={() => {
-                    if (confirm("종료된 이용권의 이름·학번을 영구 삭제할까요?"))
+                  onClick={async () => {
+                    if (
+                      await confirm(
+                        "종료된 이용권의 이름·학번을 영구 삭제할까요?",
+                      )
+                    )
                       void mutate("/admin/personal-data/purge", {});
                   }}
                 >
@@ -1024,6 +1110,20 @@ export function Admin() {
               </table>
             </div>
           </section>
+        )}
+        {tab === tabs[7] && state && allowed("accounts.manage") && (
+          <AccountsPanel state={state} busy={busy} run={run} mutate={mutate} />
+        )}
+        {tab === tabs[8] && state && allowed("settings.manage") && (
+          <BrandingPanel state={state} busy={busy} run={run} mutate={mutate} />
+        )}
+        {tab === tabs[9] && state && allowed("settings.manage") && (
+          <ExitPasswordsPanel
+            state={state}
+            busy={busy}
+            mutate={mutate}
+            run={run}
+          />
         )}
         {adjust && (
           <div className="modal-backdrop">

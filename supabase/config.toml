@@ -1,0 +1,3 @@
+[functions.club-admin]
+# The function validates the caller JWT using Auth.getUser and requires an active owner.
+verify_jwt = false

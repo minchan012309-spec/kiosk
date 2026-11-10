@@ -7,6 +7,12 @@ export function Kiosk() {
   const [selected, setSelected] = useState("");
   const [name, setName] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordAgain, setPasswordAgain] = useState("");
+  const [kioskToken, setKioskToken] = useState(
+    () => localStorage.getItem("pcclub.kioskToken") || "",
+  );
+  const [pairCode, setPairCode] = useState("");
   const [result, setResult] = useState<any>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,6 +31,10 @@ export function Kiosk() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (locked.current) return;
+    if (!/^[0-9]{4,6}$/.test(password) || password !== passwordAgain) {
+      setError("비밀번호는 숫자 4~6자리이며 확인 값과 같아야 합니다.");
+      return;
+    }
     locked.current = true;
     setBusy(true);
     setError("");
@@ -32,12 +42,16 @@ export function Kiosk() {
       setResult(
         await api(
           "/reservations",
-          { seatId: selected, name, studentId },
+          { seatId: selected, name, studentId, password },
           key.current,
         ),
       );
       setName("");
       setStudentId("");
+      setPassword("");
+      setPasswordAgain("");
+      setPassword("");
+      setPasswordAgain("");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -50,13 +64,63 @@ export function Kiosk() {
     setSelected("");
     setName("");
     setStudentId("");
+    setPassword("");
+    setPasswordAgain("");
     key.current = crypto.randomUUID();
   };
   useEffect(() => {
     if (!result) return;
-    const t = setTimeout(reset, 60000);
+    const t = setTimeout(reset, 20000);
     return () => clearTimeout(t);
   }, [result]);
+  if (!kioskToken)
+    return (
+      <div className="auth-screen">
+        <Brand />
+        <section className="panel auth-card">
+          <div className="eyebrow">KIOSK PAIRING</div>
+          <h1>키오스크 연결</h1>
+          <p className="muted">
+            운영자가 처음 한 번만 등록합니다. 관리자 → 좌석 / PC → 키오스크 연결
+            코드 발급에서 받은 코드를 입력하세요.
+          </p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError("");
+              try {
+                const r = await api("/kiosk/enroll", {
+                  code: pairCode.trim().toUpperCase(),
+                });
+                localStorage.setItem("pcclub.kioskToken", r.token);
+                setKioskToken(r.token);
+                setPairCode("");
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <label>
+              키오스크 연결 코드
+              <input
+                value={pairCode}
+                onChange={(e) => setPairCode(e.target.value)}
+                maxLength={12}
+                required
+                autoComplete="off"
+              />
+            </label>
+            <ErrorMessage message={error} />
+            <button className="primary wide" disabled={busy}>
+              키오스크 연결
+            </button>
+          </form>
+        </section>
+      </div>
+    );
   if (result)
     return (
       <div className="success-screen">
@@ -64,17 +128,20 @@ export function Kiosk() {
         <div className="eyebrow">READY TO PLAY</div>
         <h1>이용권이 준비됐어요</h1>
         <p>
-          PC {state?.seats.find((s) => s.id === selected)?.name}에 앉아 아래
-          번호로 로그인하세요.
+          PC {state?.seats.find((s) => s.id === selected)?.name}에 로그인 화면이
+          자동으로 표시됩니다.
         </p>
         <div className="ticket">
-          <span>나의 로그인 번호</span>
-          <strong data-testid="login-code">{result.code}</strong>
+          <span>이용할 자리</span>
+          <strong>
+            PC {state?.seats.find((s) => s.id === selected)?.name}
+          </strong>
+          <p>방금 만든 4~6자리 비밀번호로 입장하세요.</p>
           <p>
             {Math.floor(result.seconds / 60)}분 · {money(result.money)} 머니
           </p>
           <small>
-            번호는 배정된 PC에서 한 번만 사용할 수 있어요.
+            PC에서 비밀번호를 입력하고 입장하는 순간부터 시간이 시작됩니다.
             <br />
             {new Date(result.expiresAt).toLocaleTimeString("ko-KR")}까지
             로그인해 주세요.
@@ -195,6 +262,41 @@ export function Kiosk() {
                 maxLength={30}
                 placeholder="학번을 입력하세요"
                 autoComplete="off"
+              />
+            </label>
+            <label>
+              PC 로그인 비밀번호 · 숫자 4~6자리
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]{4,6}"
+                minLength={4}
+                maxLength={6}
+                required
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value.replace(/\D/g, ""));
+                  key.current = crypto.randomUUID();
+                }}
+                placeholder="기억하기 쉬운 비밀번호"
+              />
+            </label>
+            <label>
+              비밀번호 확인
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]{4,6}"
+                minLength={4}
+                maxLength={6}
+                required
+                autoComplete="new-password"
+                value={passwordAgain}
+                onChange={(e) =>
+                  setPasswordAgain(e.target.value.replace(/\D/g, ""))
+                }
+                placeholder="같은 비밀번호를 한 번 더 입력"
               />
             </label>
             <div className="grant">

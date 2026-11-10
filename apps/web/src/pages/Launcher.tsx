@@ -1,3 +1,6 @@
+import { Standby } from "./Standby";
+import { confirmInApp as confirm } from "../dialogs";
+import { GameSettings } from "./GameSettings";
 import { PendingOperations } from "../../../../packages/shared/src/operations";
 import { useEffect, useRef, useState } from "react";
 import type { DeviceState } from "../../../../packages/shared/src/contracts";
@@ -13,6 +16,12 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
       configured?: boolean;
       registered?: boolean;
       serverUrl?: string;
+      cloud?: boolean;
+      operatorUnlocked?: boolean;
+      localGamePaths?: Record<string, string>;
+      phase?: string;
+      closeAttemptAt?: number;
+      closeNotice?: string;
     }
   >();
   const [error, setError] = useState("");
@@ -36,7 +45,12 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         );
       return await window.cafe!.invoke(action, payload);
     } catch (e) {
-      setError((e as Error).message);
+      setError(
+        (e as Error).message.replace(
+          /^Error invoking remote method ['"]cafe:invoke['"]: (?:Error: )?/,
+          "",
+        ),
+      );
     } finally {
       setBusy(false);
     }
@@ -54,6 +68,9 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
       .catch((e) => setError(e.message));
     return window.cafe.onState(setState);
   }, []);
+  useEffect(() => {
+    if (state?.closeAttemptAt) setTab("exit");
+  }, [state?.closeAttemptAt]);
   const closeOverlay = () => void call("closeOverlay");
   if (!state?.registered)
     return (
@@ -65,21 +82,11 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           <p className="muted">운영자가 처음 한 번만 설정하면 됩니다.</p>
           <ol className="setup-steps">
             <li>
-              <strong>서버 연결 파일 불러오기</strong>
-              <p>서버의 운영 설정에서 저장한 .pcclub 파일을 선택하세요.</p>
-              <button
-                disabled={busy || !window.cafe}
-                onClick={() =>
-                  void call("importConnection").then((s) => {
-                    if (s) setState(s);
-                  })
-                }
-              >
-                연결 파일 선택
-              </button>
-              {state?.serverUrl && (
-                <small className="green-text">✓ {state.serverUrl}</small>
-              )}
+              <strong>Supabase 클라우드 연결</strong>
+              <p>로컬 서버나 연결 파일 없이 클라우드에 직접 연결합니다.</p>
+              <small className="green-text">
+                ✓ {state?.serverUrl || "클라우드 자동 연결"}
+              </small>
             </li>
             <li>
               <strong>좌석 등록 코드 입력</strong>
@@ -147,8 +154,13 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   const exitForm = (
     <>
       <h2>관리자 승인으로 종료</h2>
+      {state.closeNotice && (
+        <div className="notice" role="status">
+          {state.closeNotice}
+        </div>
+      )}
       <p className="muted">
-        운영자에게 원격 승인을 요청하거나, 현장에서 관리자 비밀번호를
+        운영자에게 원격 승인을 요청하거나, 현장에서 종료 승인 비밀번호를
         입력하세요.
       </p>
       <button
@@ -183,7 +195,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         }}
       >
         <label>
-          관리자 비밀번호
+          종료 승인 비밀번호
           <input
             type="password"
             value={password}
@@ -221,6 +233,13 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
       </details>
     </>
   );
+  if (!overlay && (state.phase === "idle" || state.phase === "thanks"))
+    return (
+      <Standby state={state} thanks={state.phase === "thanks"}>
+        {exitForm}
+        <GameSettings state={state} call={call} busy={busy} />
+      </Standby>
+    );
   if (!session && !overlay)
     return (
       <div className="auth-screen launcher-login">
@@ -228,26 +247,30 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         <div className="panel auth-card">
           <span className="badge">PC {state.device?.seatName}</span>
           <div className="eyebrow">YOUR NEXT GAME STARTS HERE</div>
-          <h1>플레이할 준비됐나요?</h1>
-          <p className="muted">키오스크에서 받은 로그인 번호를 입력하세요.</p>
+          <h1>{state.reservation?.name || "플레이어"} 님, 입장하세요</h1>
+          <p className="muted">
+            키오스크에서 만든 4~6자리 비밀번호를 입력하세요.
+          </p>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              await call("login", { code });
+              await call("login", { password: code });
               setCode("");
             }}
           >
             <label>
-              로그인 번호
+              PC 로그인 비밀번호
               <input
                 className="code-input"
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                 inputMode="numeric"
-                pattern="\d{10}"
-                maxLength={10}
+                pattern="[0-9]{4,6}"
+                minLength={4}
+                maxLength={6}
                 required
-                placeholder="0000000000"
+                placeholder="4~6자리 비밀번호"
+                type="password"
                 autoComplete="off"
               />
             </label>
@@ -264,6 +287,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           <details>
             <summary>관리자 · 프로그램 종료</summary>
             {exitForm}
+            <GameSettings state={state} call={call} busy={busy} />
           </details>
         </div>
       </div>
@@ -339,13 +363,13 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                 className={`game-card game-${i % 4}`}
                 key={g.id}
                 disabled={busy || !session}
-                onClick={() => {
+                onClick={async () => {
                   if (
                     state.currentGame &&
                     state.currentGame !== g.id &&
-                    !confirm(
+                    !(await confirm(
                       "현재 게임을 종료하고 전환합니다. 저장하지 않은 진행이 사라질 수 있습니다. 계속할까요?",
-                    )
+                    ))
                   )
                     return;
                   void call("launchGame", { gameId: g.id }).then((r) => {
@@ -371,9 +395,9 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           {state.currentGame && (
             <button
               disabled={busy}
-              onClick={() => {
+              onClick={async () => {
                 if (
-                  confirm(
+                  await confirm(
                     "게임을 종료할까요? 저장하지 않은 진행은 사라질 수 있습니다.",
                   )
                 )
@@ -405,9 +429,11 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                   p.stock < 1 ||
                   session.money < p.price
                 }
-                onClick={() => {
+                onClick={async () => {
                   if (
-                    confirm(`${p.name}을 ${money(p.price)} 머니에 주문할까요?`)
+                    await confirm(
+                      `${p.name}을 ${money(p.price)} 머니에 주문할까요?`,
+                    )
                   )
                     void call("purchase", {
                       productId: p.id,
@@ -462,9 +488,9 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                 disabled={
                   busy || !state.online || !session || session.money < e.price
                 }
-                onClick={() => {
+                onClick={async () => {
                   if (
-                    confirm(
+                    await confirm(
                       `${money(e.price)} 머니를 사용해 ${e.seconds / 60}분 연장할까요?`,
                     )
                   )
@@ -483,7 +509,10 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         </div>
       )}
       {tab === "exit" && (
-        <section className="panel exit-panel">{exitForm}</section>
+        <section className="panel exit-panel">
+          {exitForm}
+          <GameSettings state={state} call={call} busy={busy} />
+        </section>
       )}
     </div>
   );

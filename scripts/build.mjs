@@ -1,8 +1,9 @@
 import { build } from "esbuild";
 import { build as viteBuild } from "vite";
 import { resolve } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, cpSync } from "node:fs";
 mkdirSync("dist", { recursive: true });
+cpSync("build/icon.png", "dist/icon.png");
 await viteBuild({
   root: resolve("apps/web"),
   base: "./",

@@ -1,8 +1,10 @@
+import { DialogHost } from "./dialogs";
+import { useBranding, ThemeSwitcher, BrandingProvider } from "./branding";
 import { useEffect, useState } from "react";
 import { Kiosk } from "./pages/Kiosk";
 import { Admin } from "./pages/Admin";
 import { Launcher } from "./pages/Launcher";
-export function App() {
+function Routes() {
   const [route, setRoute] = useState(
     location.hash.slice(1) || location.pathname,
   );
@@ -16,14 +18,33 @@ export function App() {
   if (route.startsWith("/kiosk")) return <Kiosk />;
   return <Admin />;
 }
+export function App() {
+  return (
+    <BrandingProvider>
+      <Routes />
+      <DialogHost />
+      <ThemeSwitcher />
+    </BrandingProvider>
+  );
+}
 export function Brand() {
+  const { branding } = useBranding();
   return (
     <span className="brand">
-      <span className="brand-icon">
-        P<span>◈</span>
-      </span>
+      {branding.logoUrl ? (
+        <img
+          className="service-logo"
+          src={branding.logoUrl}
+          alt="서비스 로고"
+        />
+      ) : (
+        <span className="brand-icon">
+          P<span>◈</span>
+        </span>
+      )}
       <span>
-        PC CLUB<small>FESTIVAL EDITION</small>
+        {branding.title}
+        <small>{branding.subtitle || "FESTIVAL EDITION"}</small>
       </span>
     </span>
   );
