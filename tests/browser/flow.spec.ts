@@ -1,11 +1,81 @@
-import { expect,test } from '@playwright/test';
-test('festival kiosk, device purchase and administrator approval work together',async({page,request})=>{
- await page.goto('/admin');await page.getByLabel('초기 설정 코드').fill('test-setup-token');await page.getByLabel('관리자 비밀번호',{exact:true}).fill('festival-admin-123');await page.getByRole('button',{name:'관리자 설정 완료'}).click();await expect(page.getByText('운영 현황',{exact:true})).toBeVisible();
- await page.getByRole('button',{name:'좌석 / PC'}).click();await page.getByLabel('새 좌석 이름').fill('01');await page.getByRole('button',{name:'좌석 추가',exact:true}).click();await expect(page.getByRole('heading',{name:'PC 01'})).toBeVisible();
- const admin=await request.post('/api/admin/login',{data:{password:'festival-admin-123'}});expect(admin.ok()).toBeTruthy();const state=await (await request.get('/api/admin/state')).json();const seat=state.seats[0];const en=await (await request.post('/api/admin/devices/enrollment',{data:{seatId:seat.id}})).json();const device=await (await request.post('/api/device/enroll',{data:{code:en.code}})).json();const dh={authorization:'Bearer '+device.token};await request.post('/api/device/heartbeat',{headers:dh,data:{}});
- await page.goto('/kiosk');await page.getByRole('button',{name:/PC 01/}).click();await page.getByLabel('이름').fill('테스트 학생');await page.getByLabel('학번').fill('10101');await page.getByRole('button',{name:'이용권 발급',exact:true}).click();await expect(page.getByText('이용권이 준비됐어요')).toBeVisible();const code=await page.getByTestId('login-code').innerText();expect(code).toMatch(/^\d{10}$/);expect((await request.post('/api/device/login',{headers:dh,data:{code}})).ok()).toBeTruthy();
- const p=await (await request.post('/api/admin/products',{data:{name:'생수',price:500,stock:5}})).json();const order=await request.post('/api/device/orders',{headers:{...dh,'idempotency-key':'browser-order'},data:{productId:p.id}});expect(order.ok()).toBeTruthy();
- await page.goto('/admin');await page.getByRole('button',{name:'주문 관리'}).click();await expect(page.getByText('생수',{exact:true})).toBeVisible();await page.getByRole('button',{name:'준비 시작'}).click();await page.getByRole('button',{name:'전달 완료'}).click();await expect(page.getByText('전달 완료',{exact:true})).toBeVisible();
- await request.post('/api/device/exit-requests',{headers:dh,data:{}});await page.getByRole('button',{name:'운영 현황'}).click();await expect(page.getByRole('button',{name:'종료 승인',exact:true})).toBeVisible();await page.getByRole('button',{name:'종료 승인',exact:true}).click();const ds=await (await request.get('/api/device/state',{headers:dh})).json();expect(ds.commands[0].type).toBe('exit');expect(ds.session.money).toBe(2500);
- await page.goto('/kiosk');await expect(page.getByText('10101')).toHaveCount(0);
+import { expect, test } from "@playwright/test";
+test("festival kiosk, device purchase and administrator approval work together", async ({
+  page,
+  request,
+}) => {
+  await page.clock.install();
+  await page.goto("/admin");
+  await page.getByLabel("초기 설정 코드").fill("test-setup-token");
+  await page
+    .getByLabel("관리자 비밀번호", { exact: true })
+    .fill("festival-admin-123");
+  await page.getByRole("button", { name: "관리자 설정 완료" }).click();
+  await expect(page.getByText("운영 현황", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "좌석 / PC" }).click();
+  await page.getByLabel("새 좌석 이름").fill("01");
+  await page.getByRole("button", { name: "좌석 추가", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "PC 01" })).toBeVisible();
+  const admin = await request.post("/api/admin/login", {
+    data: { password: "festival-admin-123" },
+  });
+  expect(admin.ok()).toBeTruthy();
+  const state = await (await request.get("/api/admin/state")).json();
+  const seat = state.seats[0];
+  const en = await (
+    await request.post("/api/admin/devices/enrollment", {
+      data: { seatId: seat.id },
+    })
+  ).json();
+  const device = await (
+    await request.post("/api/device/enroll", { data: { code: en.code } })
+  ).json();
+  const dh = { authorization: "Bearer " + device.token };
+  await request.post("/api/device/heartbeat", { headers: dh, data: {} });
+  await page.goto("/kiosk");
+  await page.getByRole("button", { name: /PC 01/ }).click();
+  await page.getByLabel("이름").fill("테스트 학생");
+  await page.getByLabel("학번").fill("10101");
+  await page.getByRole("button", { name: "이용권 발급", exact: true }).click();
+  await expect(page.getByText("이용권이 준비됐어요")).toBeVisible();
+  const code = await page.getByTestId("login-code").innerText();
+  expect(code).toMatch(/^\d{10}$/);
+  expect(
+    (
+      await request.post("/api/device/login", { headers: dh, data: { code } })
+    ).ok(),
+  ).toBeTruthy();
+  const p = await (
+    await request.post("/api/admin/products", {
+      data: { name: "생수", price: 500, stock: 5 },
+    })
+  ).json();
+  const order = await request.post("/api/device/orders", {
+    headers: { ...dh, "idempotency-key": "browser-order" },
+    data: { productId: p.id },
+  });
+  expect(order.ok()).toBeTruthy();
+  await page.goto("/admin");
+  const timer = page.locator("td.mono").first();
+  await expect(timer).toBeVisible();
+  const beforeTime = await timer.innerText();
+  await page.clock.runFor(2100);
+  expect(await timer.innerText()).not.toBe(beforeTime);
+  await page.getByRole("button", { name: "주문 관리" }).click();
+  await expect(page.getByText("생수", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "준비 시작" }).click();
+  await page.getByRole("button", { name: "전달 완료" }).click();
+  await expect(page.getByText("전달 완료", { exact: true })).toBeVisible();
+  await request.post("/api/device/exit-requests", { headers: dh, data: {} });
+  await page.getByRole("button", { name: "운영 현황" }).click();
+  await expect(
+    page.getByRole("button", { name: "종료 승인", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "종료 승인", exact: true }).click();
+  const ds = await (
+    await request.get("/api/device/state", { headers: dh })
+  ).json();
+  expect(ds.commands[0].type).toBe("exit");
+  expect(ds.session.money).toBe(2500);
+  await page.goto("/kiosk");
+  await expect(page.getByText("10101")).toHaveCount(0);
 });

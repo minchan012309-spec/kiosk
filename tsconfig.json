@@ -1,1 +1,16 @@
-{"compilerOptions":{"target":"ES2023","module":"ESNext","moduleResolution":"Bundler","strict":true,"esModuleInterop":true,"skipLibCheck":true,"jsx":"react-jsx","allowImportingTsExtensions":true,"noEmit":true,"lib":["ES2023","DOM","DOM.Iterable"],"types":["node"]},"include":["apps","packages","tests","*.ts"]}
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["apps", "packages", "tests", "*.ts"]
+}

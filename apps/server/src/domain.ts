@@ -1,60 +1,746 @@
-import { DatabaseSync } from 'node:sqlite';
-import { randomBytes, randomInt, randomUUID, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
-import { z } from 'zod';
-import { reservationSchema, productSchema, extensionSchema, gameSchema, settingsSchema, type Settings, type Seat, type Session, type Device, type Order, type Product, type Extension, type Game, type Command, type ExitRequest, type Audit, type PublicState, type DeviceState, type AdminState } from '../../../packages/shared/src/contracts';
-export const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
-export function passwordHash(password:string){const salt=randomBytes(16).toString('hex');return salt+':'+scryptSync(password,salt,32).toString('hex');}
-export function verifyPassword(password:string,stored:string){try{const [salt,h]=stored.split(':');const a=Buffer.from(h,'hex');const b=scryptSync(password,salt,32);return a.length===b.length&&timingSafeEqual(a,b);}catch{return false;}}
-export class AppError extends Error{constructor(public statusCode:number,public code:string,message:string){super(message);}}
-export function requireThat(ok:unknown,message:string,status=409):asserts ok{if(!ok)throw new AppError(status,'REJECTED',message);}
-type State={settings:Settings;seats:Seat[];sessions:Session[];devices:Device[];products:Product[];extensions:Extension[];games:Game[];orders:Order[];commands:Command[];exitRequests:ExitRequest[];audit:Audit[];enrollments:{codeHash:string;seatId:string;expiresAt:number}[];retries:Record<string,{body:string;result:unknown}>;adminHash:string|null;auth:{hash:string;expiresAt:number}[]};
-const initial=():State=>({settings:{title:'FESTIVAL PC CLUB',initialSeconds:1800,initialMoney:3000,reservationSeconds:300},seats:[],sessions:[],devices:[],products:[],extensions:[],games:[],orders:[],commands:[],exitRequests:[],audit:[],enrollments:[],retries:{},adminHash:null,auth:[]});
-export function openDatabase(path:string){const db=new DatabaseSync(path);db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)');db.prepare('INSERT OR IGNORE INTO state(id,data) VALUES(1,?)').run(JSON.stringify(initial()));return db;}
-export function createDomain(db:DatabaseSync,now=Date.now){return new Domain(db,now);}
-export class Domain{
- constructor(private db:DatabaseSync,private now:()=>number){}
- private read():State{return JSON.parse((this.db.prepare('SELECT data FROM state WHERE id=1').get() as any).data);}
- private tx<T>(fn:(s:State)=>T):T{this.db.exec('BEGIN IMMEDIATE');try{const s=this.read();this.expireState(s);const result=fn(s);this.db.prepare('UPDATE state SET data=? WHERE id=1').run(JSON.stringify(s));this.db.exec('COMMIT');return result;}catch(e){this.db.exec('ROLLBACK');throw e;}}
- private audit(s:State,action:string,target:string,detail=''){s.audit.push({at:this.now(),action,target,detail});}
- private once<T>(s:State,scope:string,key:string,body:unknown,fn:()=>T):T{requireThat(typeof key==='string'&&key.length>=1&&key.length<=200,'요청 번호가 필요합니다.',400);const k=scope+':'+key;const digest=hash(JSON.stringify(body));if(s.retries[k]){requireThat(s.retries[k].body===digest,'같은 요청 번호에 다른 내용을 사용할 수 없습니다.');return s.retries[k].result as T;}const r=fn();s.retries[k]={body:digest,result:r};return r;}
- private expireState(s:State){for(const r of s.sessions)if((r.status==='reserved'&&r.expiresAt<=this.now())||(r.status==='active'&&r.endAt!<=this.now())){r.status='ended';this.audit(s,'session.expired',r.id);}for(const r of s.exitRequests)if(r.status==='pending'&&r.expiresAt<=this.now())r.status='expired';for(const c of s.commands)if(c.status==='pending'&&c.expiresAt<=this.now())c.status='expired';s.auth=s.auth.filter(a=>a.expiresAt>this.now());}
- expire(){this.tx(()=>{});}
- private device(s:State,token:string){const d=s.devices.find(d=>d.tokenHash===hash(token));requireThat(d,'등록된 PC 인증이 필요합니다.',401);return d;}
- private active(s:State,device:Device){const r=s.sessions.find(r=>r.seatId===device.seatId&&r.status==='active');requireThat(r,'진행 중인 이용 시간이 없습니다.');return r;}
- isSetup(){return !!this.read().adminHash;}
- bootstrap(password:string){z.string().min(10).max(128).parse(password);return this.tx(s=>{requireThat(!s.adminHash,'이미 관리자 설정이 완료됐습니다.');s.adminHash=passwordHash(password);this.audit(s,'admin.setup','admin');});}
- login(password:string){return this.tx(s=>{requireThat(s.adminHash&&verifyPassword(password,s.adminHash),'비밀번호가 올바르지 않습니다.',401);const token=randomBytes(32).toString('hex');s.auth.push({hash:hash(token),expiresAt:this.now()+12*3600_000});return token;});}
- admin(token:string){requireThat(this.read().auth.some(a=>a.hash===hash(token)&&a.expiresAt>this.now()),'관리자 로그인이 필요합니다.',401);}
- logout(token:string){this.tx(s=>{s.auth=s.auth.filter(a=>a.hash!==hash(token));});}
- changePassword(old:string,password:string){z.string().min(10).max(128).parse(password);this.tx(s=>{requireThat(s.adminHash&&verifyPassword(old,s.adminHash),'현재 비밀번호가 다릅니다.',401);s.adminHash=passwordHash(password);s.auth=[];this.audit(s,'admin.password','admin');});}
- addSeat(name:string){name=z.string().trim().min(1).max(30).parse(name);return this.tx(s=>{requireThat(!s.seats.some(a=>a.name===name),'같은 이름의 좌석이 있습니다.');const seat={id:randomUUID(),name,enabled:true};s.seats.push(seat);return seat;});}
- setSeat(id:string,enabled:boolean){return this.tx(s=>{const seat=s.seats.find(a=>a.id===id);requireThat(seat,'좌석이 없습니다.',404);seat.enabled=enabled;this.audit(s,'seat.enabled',id,String(enabled));return seat;});}
- settings(input:unknown){const settings=settingsSchema.parse(input);return this.tx(s=>{s.settings=settings;this.audit(s,'settings.update','settings');return settings;});}
- enrollment(seatId:string){return this.tx(s=>{requireThat(s.seats.some(x=>x.id===seatId),'좌석이 없습니다.',404);requireThat(!s.sessions.some(r=>r.seatId===seatId&&r.status!=='ended'),'이용 중인 좌석은 재등록할 수 없습니다.');const code=randomBytes(6).toString('hex').toUpperCase();s.enrollments=s.enrollments.filter(x=>x.seatId!==seatId);s.enrollments.push({codeHash:hash(code),seatId,expiresAt:this.now()+600_000});return {code,expiresAt:this.now()+600_000};});}
- enroll(code:string){return this.tx(s=>{const i=s.enrollments.findIndex(e=>e.codeHash===hash(code.trim().toUpperCase())&&e.expiresAt>this.now());requireThat(i>=0,'등록 코드가 만료됐거나 이미 사용됐습니다.');const e=s.enrollments.splice(i,1)[0];s.devices=s.devices.filter(d=>d.seatId!==e.seatId);const token=randomBytes(32).toString('hex');const recoveryCode=randomBytes(12).toString('hex').toUpperCase();const device={id:randomUUID(),seatId:e.seatId,tokenHash:hash(token),recoveryHash:passwordHash(recoveryCode),lastSeen:0};s.devices.push(device);this.audit(s,'device.enrolled',device.id);return {token,deviceId:device.id,seatId:e.seatId,recoveryCode,recoveryHash:device.recoveryHash};});}
- heartbeat(token:string){return this.tx(s=>{const d=this.device(s,token);d.lastSeen=this.now();return {deviceId:d.id};});}
- reserve(input:unknown,key:string){const b=reservationSchema.parse(input);return this.tx(s=>this.once(s,'reserve',key,b,()=>{const seat=s.seats.find(x=>x.id===b.seatId);requireThat(seat?.enabled,'사용 가능한 좌석이 아닙니다.');requireThat(s.devices.some(d=>d.seatId===seat.id&&d.lastSeen>this.now()-15_000),'PC가 연결되어 있지 않습니다.');requireThat(!s.sessions.some(r=>r.seatId===seat.id&&r.status!=='ended'),'이미 배정된 좌석입니다.');const code=String(randomInt(0,1_000_000_000))+String(randomInt(0,10));const padded=code.padStart(10,'0');const r:Session={id:randomUUID(),...b,codeHash:hash(padded),money:s.settings.initialMoney,seconds:s.settings.initialSeconds,createdAt:this.now(),expiresAt:this.now()+s.settings.reservationSeconds*1000,endAt:null,status:'reserved'};s.sessions.push(r);this.audit(s,'session.reserved',r.id);return {id:r.id,code:padded,money:r.money,seconds:r.seconds,endAt:null,expiresAt:r.expiresAt};}));}
- activate(token:string,code:string){return this.tx(s=>{const d=this.device(s,token);const r=s.sessions.find(r=>r.seatId===d.seatId&&r.status==='reserved'&&r.codeHash===hash(code));requireThat(r,'로그인 번호를 확인해 주세요.');r.status='active';r.codeHash='';r.endAt=this.now()+r.seconds*1000;this.audit(s,'session.activated',r.id);return this.cleanSession(r);});}
- private cleanSession(r:Session){const {codeHash,code,...view}=r;return view;}
- saveProduct(input:unknown){const b=productSchema.parse(input);return this.tx(s=>{const item={...b,id:b.id||randomUUID(),enabled:b.enabled??true};const i=s.products.findIndex(x=>x.id===item.id);if(i<0)s.products.push(item);else s.products[i]=item;this.audit(s,'product.save',item.id);return item;});}
- saveExtension(input:unknown){const b=extensionSchema.parse(input);return this.tx(s=>{const item={...b,id:b.id||randomUUID(),enabled:b.enabled??true};const i=s.extensions.findIndex(x=>x.id===item.id);if(i<0)s.extensions.push(item);else s.extensions[i]=item;return item;});}
- saveGame(input:unknown){const b=gameSchema.parse(input);return this.tx(s=>{const item={...b,id:b.id||randomUUID()};const i=s.games.findIndex(x=>x.id===item.id);if(i<0)s.games.push(item);else s.games[i]=item;return item;});}
- purchase(token:string,productId:string,key:string){return this.tx(s=>{const d=this.device(s,token);return this.once(s,d.id+':purchase',key,{productId},()=>{const r=this.active(s,d);const p=s.products.find(p=>p.id===productId&&p.enabled);requireThat(p&&p.stock>0,'상품이 품절되었거나 판매하지 않습니다.');requireThat(r.money>=p.price,'머니가 부족합니다.');r.money-=p.price;p.stock--;const o:Order={id:randomUUID(),sessionId:r.id,seatId:r.seatId,productId:p.id,name:p.name,price:p.price,status:'received',createdAt:this.now()};s.orders.push(o);this.audit(s,'order.paid',o.id,String(p.price));return o;});});}
- extend(token:string,extensionId:string,key:string){return this.tx(s=>{const d=this.device(s,token);return this.once(s,d.id+':extend',key,{extensionId},()=>{const r=this.active(s,d);const e=s.extensions.find(e=>e.id===extensionId&&e.enabled);requireThat(e,'연장 상품이 없습니다.');requireThat(r.money>=e.price,'머니가 부족합니다.');r.money-=e.price;r.endAt!+=e.seconds*1000;this.audit(s,'session.extended',r.id,String(e.seconds));return this.cleanSession(r);});});}
- cancelOrder(id:string,key:string){return this.tx(s=>this.once(s,'cancel',key,{id},()=>{const o=s.orders.find(o=>o.id===id);requireThat(o,'주문이 없습니다.',404);if(o.status!=='cancelled'){const r=s.sessions.find(r=>r.id===o.sessionId)!;r.money+=o.price;const p=s.products.find(p=>p.id===o.productId);if(p)p.stock++;o.status='cancelled';this.audit(s,'order.refunded',id,String(o.price));}return o;}));}
- orderStatus(id:string,status:string,key:string){if(status==='cancelled')return this.cancelOrder(id,key);return this.tx(s=>{const o=s.orders.find(o=>o.id===id);requireThat(o,'주문이 없습니다.',404);requireThat((o.status==='received'&&status==='preparing')||(o.status==='preparing'&&status==='delivered')||o.status===status,'주문 상태를 변경할 수 없습니다.');o.status=status as Order['status'];this.audit(s,'order.status',id,status);return o;});}
- adjust(id:string,seconds:number,money:number,key:string){z.number().int().min(-86400).max(86400).parse(seconds);z.number().int().min(-1_000_000).max(1_000_000).parse(money);return this.tx(s=>this.once(s,'adjust',key,{id,seconds,money},()=>{const r=s.sessions.find(r=>r.id===id&&r.status!=='ended');requireThat(r,'이용 중인 세션이 없습니다.');requireThat(r.money+money>=0,'머니는 음수가 될 수 없습니다.');requireThat(r.seconds+seconds>=0,'시간은 음수가 될 수 없습니다.');r.money+=money;if(r.status==='active')r.endAt=Math.max(this.now(),r.endAt!+seconds*1000);else r.seconds+=seconds;this.audit(s,'session.adjust',id,JSON.stringify({seconds,money}));this.expireState(s);return this.cleanSession(r);}));}
- endSession(id:string){return this.tx(s=>{const r=s.sessions.find(r=>r.id===id);requireThat(r,'세션이 없습니다.',404);r.status='ended';r.codeHash='';this.audit(s,'session.ended',id);return {ok:true};});}
- endDeviceSession(token:string){return this.tx(s=>{const d=this.device(s,token);for(const r of s.sessions)if(r.seatId===d.seatId&&r.status!=='ended'){r.status='ended';r.codeHash='';}this.audit(s,'device.session.ended',d.id);});}
- requestExit(token:string){return this.tx(s=>{const d=this.device(s,token);const existing=s.exitRequests.find(x=>x.deviceId===d.id&&x.status==='pending');if(existing)return existing;const r:ExitRequest={id:randomUUID(),deviceId:d.id,seatId:d.seatId,status:'pending',expiresAt:this.now()+120_000};s.exitRequests.push(r);this.audit(s,'exit.requested',r.id);return r;});}
- private command(s:State,deviceId:string,type:Command['type']){requireThat(s.devices.some(d=>d.id===deviceId&&d.lastSeen>this.now()-15_000),'PC가 연결되어 있지 않습니다.');const c:Command={id:randomUUID(),deviceId,type,status:'pending',expiresAt:this.now()+60_000};s.commands.push(c);this.audit(s,'command.'+type,c.id);return c;}
- decideExit(id:string,approve:boolean){return this.tx(s=>{const r=s.exitRequests.find(x=>x.id===id);requireThat(r&&r.status==='pending'&&r.expiresAt>this.now(),'승인 요청이 만료됐거나 처리됐습니다.');r.status=approve?'approved':'rejected';if(approve)this.command(s,r.deviceId,'exit');this.audit(s,'exit.decided',id,String(approve));return r;});}
- exitPassword(token:string,password:string){return this.tx(s=>{const d=this.device(s,token);requireThat(s.adminHash&&verifyPassword(password,s.adminHash),'관리자 비밀번호를 확인해 주세요.',401);return this.command(s,d.id,'exit');});}
- shutdown(deviceId:string){return this.tx(s=>this.command(s,deviceId,'shutdown'));}
- ack(token:string,id:string,status:string,message=''){return this.tx(s=>{const d=this.device(s,token);const c=s.commands.find(c=>c.id===id&&c.deviceId===d.id);requireThat(c&&c.status==='pending'&&c.expiresAt>this.now(),'명령이 만료됐거나 처리됐습니다.');requireThat(status==='accepted'||status==='failed','잘못된 명령 응답입니다.',400);c.status=status;c.message=message.slice(0,200);this.audit(s,'command.'+status,c.id,c.message);return {ok:true};});}
- purgePersonalData(){return this.tx(s=>{for(const r of s.sessions)if(r.status==='ended'){r.name='삭제됨';r.studentId='';r.codeHash='';}for(const [k] of Object.entries(s.retries))if(k.startsWith('reserve:'))delete s.retries[k];this.audit(s,'privacy.purged','ended-sessions');return {ok:true};});}
- private seats(s:State){return s.seats.map(seat=>({...seat,online:s.devices.some(d=>d.seatId===seat.id&&d.lastSeen>this.now()-15_000),session:(()=>{const r=s.sessions.find(r=>r.seatId===seat.id&&r.status!=='ended');return r?{status:r.status}:null;})()}));}
- publicState():PublicState{return this.tx(s=>({settings:s.settings,seats:this.seats(s),products:s.products.filter(p=>p.enabled),extensions:s.extensions.filter(e=>e.enabled),games:s.games.filter(g=>g.enabled).map(({id,name,description})=>({id,name,description})),serverNow:this.now()}));}
- deviceState(token:string):DeviceState{return this.tx(s=>{const d=this.device(s,token);const r=s.sessions.find(r=>r.seatId===d.seatId&&r.status==='active');return {device:{id:d.id,seatId:d.seatId,seatName:s.seats.find(x=>x.id===d.seatId)!.name},session:r?this.cleanSession(r):null,products:s.products.filter(p=>p.enabled),extensions:s.extensions.filter(e=>e.enabled),games:s.games.filter(g=>g.enabled).map(g=>({...g,executable:g.paths[d.seatId]||g.executable})),orders:r?s.orders.filter(o=>o.sessionId===r.id):[],commands:s.commands.filter(c=>c.deviceId===d.id&&c.status==='pending'),exitRequests:s.exitRequests.filter(x=>x.deviceId===d.id).slice(-10),serverNow:this.now()};});}
- adminState():AdminState{return this.tx(s=>({settings:s.settings,seats:this.seats(s).map(seat=>({...seat,deviceId:s.devices.find(d=>d.seatId===seat.id)?.id})),sessions:s.sessions.map(r=>this.cleanSession(r)),products:s.products,extensions:s.extensions,games:s.games,orders:s.orders,commands:s.commands,exitRequests:s.exitRequests,audit:s.audit.slice(-500).reverse(),serverNow:this.now()}));}
+import { DatabaseSync } from "node:sqlite";
+import {
+  randomBytes,
+  randomInt,
+  randomUUID,
+  createHash,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
+import { z } from "zod";
+import {
+  reservationSchema,
+  productSchema,
+  extensionSchema,
+  gameSchema,
+  settingsSchema,
+  type Settings,
+  type Seat,
+  type Session,
+  type Device,
+  type Order,
+  type Product,
+  type Extension,
+  type Game,
+  type Command,
+  type ExitRequest,
+  type Audit,
+  type PublicState,
+  type DeviceState,
+  type AdminState,
+} from "../../../packages/shared/src/contracts";
+export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+export function passwordHash(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  return salt + ":" + scryptSync(password, salt, 32).toString("hex");
+}
+export function verifyPassword(password: string, stored: string) {
+  try {
+    const [salt, h] = stored.split(":");
+    const a = Buffer.from(h, "hex");
+    const b = scryptSync(password, salt, 32);
+    return a.length === b.length && timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+export class AppError extends Error {
+  constructor(
+    public statusCode: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+export function requireThat(
+  ok: unknown,
+  message: string,
+  status = 409,
+): asserts ok {
+  if (!ok) throw new AppError(status, "REJECTED", message);
+}
+type State = {
+  settings: Settings;
+  seats: Seat[];
+  sessions: Session[];
+  devices: Device[];
+  products: Product[];
+  extensions: Extension[];
+  games: Game[];
+  orders: Order[];
+  commands: Command[];
+  exitRequests: ExitRequest[];
+  audit: Audit[];
+  enrollments: { codeHash: string; seatId: string; expiresAt: number }[];
+  retries: Record<string, { body: string; result: unknown }>;
+  adminHash: string | null;
+  auth: { hash: string; expiresAt: number }[];
+};
+const initial = (): State => ({
+  settings: {
+    title: "FESTIVAL PC CLUB",
+    initialSeconds: 1800,
+    initialMoney: 3000,
+    reservationSeconds: 300,
+  },
+  seats: [],
+  sessions: [],
+  devices: [],
+  products: [],
+  extensions: [],
+  games: [],
+  orders: [],
+  commands: [],
+  exitRequests: [],
+  audit: [],
+  enrollments: [],
+  retries: {},
+  adminHash: null,
+  auth: [],
+});
+export function openDatabase(path: string) {
+  const db = new DatabaseSync(path);
+  db.exec(
+    "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS state (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)",
+  );
+  db.prepare("INSERT OR IGNORE INTO state(id,data) VALUES(1,?)").run(
+    JSON.stringify(initial()),
+  );
+  return db;
+}
+export function createDomain(db: DatabaseSync, now = Date.now) {
+  return new Domain(db, now);
+}
+export class Domain {
+  constructor(
+    private db: DatabaseSync,
+    private now: () => number,
+  ) {}
+  private read(): State {
+    return JSON.parse(
+      (this.db.prepare("SELECT data FROM state WHERE id=1").get() as any).data,
+    );
+  }
+  private tx<T>(fn: (s: State) => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const s = this.read();
+      this.expireState(s);
+      const result = fn(s);
+      this.db
+        .prepare("UPDATE state SET data=? WHERE id=1")
+        .run(JSON.stringify(s));
+      this.db.exec("COMMIT");
+      return result;
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+  private audit(s: State, action: string, target: string, detail = "") {
+    s.audit.push({ at: this.now(), action, target, detail });
+  }
+  private once<T>(
+    s: State,
+    scope: string,
+    key: string,
+    body: unknown,
+    fn: () => T,
+  ): T {
+    requireThat(
+      typeof key === "string" && key.length >= 1 && key.length <= 200,
+      "요청 번호가 필요합니다.",
+      400,
+    );
+    const k = scope + ":" + key;
+    const digest = hash(JSON.stringify(body));
+    if (s.retries[k]) {
+      requireThat(
+        s.retries[k].body === digest,
+        "같은 요청 번호에 다른 내용을 사용할 수 없습니다.",
+      );
+      return s.retries[k].result as T;
+    }
+    const r = fn();
+    s.retries[k] = { body: digest, result: r };
+    return r;
+  }
+  private expireState(s: State) {
+    for (const r of s.sessions)
+      if (
+        (r.status === "reserved" && r.expiresAt <= this.now()) ||
+        (r.status === "active" && r.endAt! <= this.now())
+      ) {
+        r.status = "ended";
+        this.audit(s, "session.expired", r.id);
+      }
+    for (const r of s.exitRequests)
+      if (r.status === "pending" && r.expiresAt <= this.now())
+        r.status = "expired";
+    for (const c of s.commands)
+      if (c.status === "pending" && c.expiresAt <= this.now())
+        c.status = "expired";
+    s.auth = s.auth.filter((a) => a.expiresAt > this.now());
+  }
+  expire() {
+    this.tx(() => {});
+  }
+  private device(s: State, token: string) {
+    const d = s.devices.find((d) => d.tokenHash === hash(token));
+    requireThat(d, "등록된 PC 인증이 필요합니다.", 401);
+    return d;
+  }
+  private active(s: State, device: Device) {
+    const r = s.sessions.find(
+      (r) => r.seatId === device.seatId && r.status === "active",
+    );
+    requireThat(r, "진행 중인 이용 시간이 없습니다.");
+    return r;
+  }
+  resetAdmin() {
+    this.tx((s) => {
+      s.adminHash = null;
+      s.auth = [];
+      this.audit(s, "admin.reset", "local-console");
+    });
+  }
+  isSetup() {
+    return !!this.read().adminHash;
+  }
+  bootstrap(password: string) {
+    z.string().min(10).max(128).parse(password);
+    return this.tx((s) => {
+      requireThat(!s.adminHash, "이미 관리자 설정이 완료됐습니다.");
+      s.adminHash = passwordHash(password);
+      this.audit(s, "admin.setup", "admin");
+    });
+  }
+  login(password: string) {
+    return this.tx((s) => {
+      requireThat(
+        s.adminHash && verifyPassword(password, s.adminHash),
+        "비밀번호가 올바르지 않습니다.",
+        401,
+      );
+      const token = randomBytes(32).toString("hex");
+      s.auth.push({ hash: hash(token), expiresAt: this.now() + 12 * 3600_000 });
+      return token;
+    });
+  }
+  admin(token: string) {
+    requireThat(
+      this.read().auth.some(
+        (a) => a.hash === hash(token) && a.expiresAt > this.now(),
+      ),
+      "관리자 로그인이 필요합니다.",
+      401,
+    );
+  }
+  logout(token: string) {
+    this.tx((s) => {
+      s.auth = s.auth.filter((a) => a.hash !== hash(token));
+    });
+  }
+  changePassword(old: string, password: string) {
+    z.string().min(10).max(128).parse(password);
+    this.tx((s) => {
+      requireThat(
+        s.adminHash && verifyPassword(old, s.adminHash),
+        "현재 비밀번호가 다릅니다.",
+        401,
+      );
+      s.adminHash = passwordHash(password);
+      s.auth = [];
+      this.audit(s, "admin.password", "admin");
+    });
+  }
+  addSeat(name: string) {
+    name = z.string().trim().min(1).max(30).parse(name);
+    return this.tx((s) => {
+      requireThat(
+        !s.seats.some((a) => a.name === name),
+        "같은 이름의 좌석이 있습니다.",
+      );
+      const seat = { id: randomUUID(), name, enabled: true };
+      s.seats.push(seat);
+      return seat;
+    });
+  }
+  setSeat(id: string, enabled: boolean) {
+    return this.tx((s) => {
+      const seat = s.seats.find((a) => a.id === id);
+      requireThat(seat, "좌석이 없습니다.", 404);
+      seat.enabled = enabled;
+      this.audit(s, "seat.enabled", id, String(enabled));
+      return seat;
+    });
+  }
+  settings(input: unknown) {
+    const settings = settingsSchema.parse(input);
+    return this.tx((s) => {
+      s.settings = settings;
+      this.audit(s, "settings.update", "settings");
+      return settings;
+    });
+  }
+  enrollment(seatId: string) {
+    return this.tx((s) => {
+      requireThat(
+        s.seats.some((x) => x.id === seatId),
+        "좌석이 없습니다.",
+        404,
+      );
+      requireThat(
+        !s.sessions.some((r) => r.seatId === seatId && r.status !== "ended"),
+        "이용 중인 좌석은 재등록할 수 없습니다.",
+      );
+      const code = randomBytes(6).toString("hex").toUpperCase();
+      s.enrollments = s.enrollments.filter((x) => x.seatId !== seatId);
+      s.enrollments.push({
+        codeHash: hash(code),
+        seatId,
+        expiresAt: this.now() + 600_000,
+      });
+      return { code, expiresAt: this.now() + 600_000 };
+    });
+  }
+  enroll(code: string) {
+    return this.tx((s) => {
+      const i = s.enrollments.findIndex(
+        (e) =>
+          e.codeHash === hash(code.trim().toUpperCase()) &&
+          e.expiresAt > this.now(),
+      );
+      requireThat(i >= 0, "등록 코드가 만료됐거나 이미 사용됐습니다.");
+      const e = s.enrollments.splice(i, 1)[0];
+      s.devices = s.devices.filter((d) => d.seatId !== e.seatId);
+      const token = randomBytes(32).toString("hex");
+      const recoveryCode = randomBytes(12).toString("hex").toUpperCase();
+      const device = {
+        id: randomUUID(),
+        seatId: e.seatId,
+        tokenHash: hash(token),
+        recoveryHash: passwordHash(recoveryCode),
+        lastSeen: 0,
+      };
+      s.devices.push(device);
+      this.audit(s, "device.enrolled", device.id);
+      return {
+        token,
+        deviceId: device.id,
+        seatId: e.seatId,
+        recoveryCode,
+        recoveryHash: device.recoveryHash,
+      };
+    });
+  }
+  heartbeat(token: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      d.lastSeen = this.now();
+      return { deviceId: d.id };
+    });
+  }
+  reserve(input: unknown, key: string) {
+    const b = reservationSchema.parse(input);
+    return this.tx((s) =>
+      this.once(s, "reserve", key, b, () => {
+        const seat = s.seats.find((x) => x.id === b.seatId);
+        requireThat(seat?.enabled, "사용 가능한 좌석이 아닙니다.");
+        requireThat(
+          s.devices.some(
+            (d) => d.seatId === seat.id && d.lastSeen > this.now() - 15_000,
+          ),
+          "PC가 연결되어 있지 않습니다.",
+        );
+        requireThat(
+          !s.sessions.some((r) => r.seatId === seat.id && r.status !== "ended"),
+          "이미 배정된 좌석입니다.",
+        );
+        const code =
+          String(randomInt(0, 1_000_000_000)) + String(randomInt(0, 10));
+        const padded = code.padStart(10, "0");
+        const r: Session = {
+          id: randomUUID(),
+          ...b,
+          codeHash: hash(padded),
+          money: s.settings.initialMoney,
+          seconds: s.settings.initialSeconds,
+          createdAt: this.now(),
+          expiresAt: this.now() + s.settings.reservationSeconds * 1000,
+          endAt: null,
+          status: "reserved",
+        };
+        s.sessions.push(r);
+        this.audit(s, "session.reserved", r.id);
+        return {
+          id: r.id,
+          code: padded,
+          money: r.money,
+          seconds: r.seconds,
+          endAt: null,
+          expiresAt: r.expiresAt,
+        };
+      }),
+    );
+  }
+  activate(token: string, code: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      const r = s.sessions.find(
+        (r) =>
+          r.seatId === d.seatId &&
+          r.status === "reserved" &&
+          r.codeHash === hash(code),
+      );
+      requireThat(r, "로그인 번호를 확인해 주세요.");
+      r.status = "active";
+      r.codeHash = "";
+      r.endAt = this.now() + r.seconds * 1000;
+      this.audit(s, "session.activated", r.id);
+      return this.cleanSession(r);
+    });
+  }
+  private cleanSession(r: Session) {
+    const { codeHash, code, ...view } = r;
+    return view;
+  }
+  saveProduct(input: unknown) {
+    const b = productSchema.parse(input);
+    return this.tx((s) => {
+      const item = {
+        ...b,
+        id: b.id || randomUUID(),
+        enabled: b.enabled ?? true,
+      };
+      const i = s.products.findIndex((x) => x.id === item.id);
+      if (i < 0) s.products.push(item);
+      else s.products[i] = item;
+      this.audit(s, "product.save", item.id);
+      return item;
+    });
+  }
+  saveExtension(input: unknown) {
+    const b = extensionSchema.parse(input);
+    return this.tx((s) => {
+      const item = {
+        ...b,
+        id: b.id || randomUUID(),
+        enabled: b.enabled ?? true,
+      };
+      const i = s.extensions.findIndex((x) => x.id === item.id);
+      if (i < 0) s.extensions.push(item);
+      else s.extensions[i] = item;
+      return item;
+    });
+  }
+  saveGame(input: unknown) {
+    const b = gameSchema.parse(input);
+    return this.tx((s) => {
+      const item = { ...b, id: b.id || randomUUID() };
+      const i = s.games.findIndex((x) => x.id === item.id);
+      if (i < 0) s.games.push(item);
+      else s.games[i] = item;
+      return item;
+    });
+  }
+  purchase(token: string, productId: string, key: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      return this.once(s, d.id + ":purchase", key, { productId }, () => {
+        const r = this.active(s, d);
+        const p = s.products.find((p) => p.id === productId && p.enabled);
+        requireThat(p && p.stock > 0, "상품이 품절되었거나 판매하지 않습니다.");
+        requireThat(r.money >= p.price, "머니가 부족합니다.");
+        r.money -= p.price;
+        p.stock--;
+        const o: Order = {
+          id: randomUUID(),
+          sessionId: r.id,
+          seatId: r.seatId,
+          productId: p.id,
+          name: p.name,
+          price: p.price,
+          status: "received",
+          createdAt: this.now(),
+        };
+        s.orders.push(o);
+        this.audit(s, "order.paid", o.id, String(p.price));
+        return o;
+      });
+    });
+  }
+  extend(token: string, extensionId: string, key: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      return this.once(s, d.id + ":extend", key, { extensionId }, () => {
+        const r = this.active(s, d);
+        const e = s.extensions.find((e) => e.id === extensionId && e.enabled);
+        requireThat(e, "연장 상품이 없습니다.");
+        requireThat(r.money >= e.price, "머니가 부족합니다.");
+        r.money -= e.price;
+        r.endAt! += e.seconds * 1000;
+        this.audit(s, "session.extended", r.id, String(e.seconds));
+        return this.cleanSession(r);
+      });
+    });
+  }
+  cancelOrder(id: string, key: string) {
+    return this.tx((s) =>
+      this.once(s, "cancel", key, { id }, () => {
+        const o = s.orders.find((o) => o.id === id);
+        requireThat(o, "주문이 없습니다.", 404);
+        if (o.status !== "cancelled") {
+          const r = s.sessions.find((r) => r.id === o.sessionId)!;
+          r.money += o.price;
+          const p = s.products.find((p) => p.id === o.productId);
+          if (p) p.stock++;
+          o.status = "cancelled";
+          this.audit(s, "order.refunded", id, String(o.price));
+        }
+        return o;
+      }),
+    );
+  }
+  orderStatus(id: string, status: string, key: string) {
+    if (status === "cancelled") return this.cancelOrder(id, key);
+    return this.tx((s) => {
+      const o = s.orders.find((o) => o.id === id);
+      requireThat(o, "주문이 없습니다.", 404);
+      requireThat(
+        (o.status === "received" && status === "preparing") ||
+          (o.status === "preparing" && status === "delivered") ||
+          o.status === status,
+        "주문 상태를 변경할 수 없습니다.",
+      );
+      o.status = status as Order["status"];
+      this.audit(s, "order.status", id, status);
+      return o;
+    });
+  }
+  adjust(id: string, seconds: number, money: number, key: string) {
+    z.number().int().min(-86400).max(86400).parse(seconds);
+    z.number().int().min(-1_000_000).max(1_000_000).parse(money);
+    return this.tx((s) =>
+      this.once(s, "adjust", key, { id, seconds, money }, () => {
+        const r = s.sessions.find((r) => r.id === id && r.status !== "ended");
+        requireThat(r, "이용 중인 세션이 없습니다.");
+        requireThat(r.money + money >= 0, "머니는 음수가 될 수 없습니다.");
+        requireThat(r.seconds + seconds >= 0, "시간은 음수가 될 수 없습니다.");
+        r.money += money;
+        if (r.status === "active")
+          r.endAt = Math.max(this.now(), r.endAt! + seconds * 1000);
+        else r.seconds += seconds;
+        this.audit(s, "session.adjust", id, JSON.stringify({ seconds, money }));
+        this.expireState(s);
+        return this.cleanSession(r);
+      }),
+    );
+  }
+  endSession(id: string) {
+    return this.tx((s) => {
+      const r = s.sessions.find((r) => r.id === id);
+      requireThat(r, "세션이 없습니다.", 404);
+      r.status = "ended";
+      r.codeHash = "";
+      this.audit(s, "session.ended", id);
+      return { ok: true };
+    });
+  }
+  endDeviceSession(token: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      for (const r of s.sessions)
+        if (r.seatId === d.seatId && r.status !== "ended") {
+          r.status = "ended";
+          r.codeHash = "";
+        }
+      this.audit(s, "device.session.ended", d.id);
+    });
+  }
+  requestExit(token: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      const existing = s.exitRequests.find(
+        (x) => x.deviceId === d.id && x.status === "pending",
+      );
+      if (existing) return existing;
+      const r: ExitRequest = {
+        id: randomUUID(),
+        deviceId: d.id,
+        seatId: d.seatId,
+        status: "pending",
+        expiresAt: this.now() + 120_000,
+      };
+      s.exitRequests.push(r);
+      this.audit(s, "exit.requested", r.id);
+      return r;
+    });
+  }
+  private command(s: State, deviceId: string, type: Command["type"]) {
+    requireThat(
+      s.devices.some(
+        (d) => d.id === deviceId && d.lastSeen > this.now() - 15_000,
+      ),
+      "PC가 연결되어 있지 않습니다.",
+    );
+    const c: Command = {
+      id: randomUUID(),
+      deviceId,
+      type,
+      status: "pending",
+      expiresAt: this.now() + 60_000,
+    };
+    s.commands.push(c);
+    this.audit(s, "command." + type, c.id);
+    return c;
+  }
+  decideExit(id: string, approve: boolean) {
+    return this.tx((s) => {
+      const r = s.exitRequests.find((x) => x.id === id);
+      requireThat(
+        r && r.status === "pending" && r.expiresAt > this.now(),
+        "승인 요청이 만료됐거나 처리됐습니다.",
+      );
+      r.status = approve ? "approved" : "rejected";
+      if (approve) this.command(s, r.deviceId, "exit");
+      this.audit(s, "exit.decided", id, String(approve));
+      return r;
+    });
+  }
+  exitPassword(token: string, password: string) {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      requireThat(
+        s.adminHash && verifyPassword(password, s.adminHash),
+        "관리자 비밀번호를 확인해 주세요.",
+        401,
+      );
+      return this.command(s, d.id, "exit");
+    });
+  }
+  shutdown(deviceId: string) {
+    return this.tx((s) => this.command(s, deviceId, "shutdown"));
+  }
+  ack(token: string, id: string, status: string, message = "") {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      const c = s.commands.find((c) => c.id === id && c.deviceId === d.id);
+      requireThat(
+        c &&
+          ((c.status === "pending" && c.expiresAt > this.now()) ||
+            (c.status === "accepted" &&
+              status === "failed" &&
+              c.expiresAt > this.now())),
+        "명령이 만료됐거나 처리됐습니다.",
+      );
+      requireThat(
+        status === "accepted" || status === "failed",
+        "잘못된 명령 응답입니다.",
+        400,
+      );
+      c.status = status;
+      c.message = message.slice(0, 200);
+      if (status === "accepted") {
+        for (const r of s.sessions)
+          if (r.seatId === d.seatId && r.status !== "ended") {
+            r.status = "ended";
+            r.codeHash = "";
+          }
+      }
+      this.audit(s, "command." + status, c.id, c.message);
+      return { ok: true };
+    });
+  }
+  purgePersonalData() {
+    return this.tx((s) => {
+      for (const r of s.sessions)
+        if (r.status === "ended") {
+          r.name = "삭제됨";
+          r.studentId = "";
+          r.codeHash = "";
+        }
+      for (const [k] of Object.entries(s.retries))
+        if (k.startsWith("reserve:")) delete s.retries[k];
+      this.audit(s, "privacy.purged", "ended-sessions");
+      return { ok: true };
+    });
+  }
+  private seats(s: State) {
+    return s.seats.map((seat) => ({
+      ...seat,
+      online: s.devices.some(
+        (d) => d.seatId === seat.id && d.lastSeen > this.now() - 15_000,
+      ),
+      session: (() => {
+        const r = s.sessions.find(
+          (r) => r.seatId === seat.id && r.status !== "ended",
+        );
+        return r ? { status: r.status } : null;
+      })(),
+    }));
+  }
+  publicState(): PublicState {
+    return this.tx((s) => ({
+      settings: s.settings,
+      seats: this.seats(s),
+      products: s.products.filter((p) => p.enabled),
+      extensions: s.extensions.filter((e) => e.enabled),
+      games: s.games
+        .filter((g) => g.enabled)
+        .map(({ id, name, description }) => ({ id, name, description })),
+      serverNow: this.now(),
+    }));
+  }
+  deviceState(token: string): DeviceState {
+    return this.tx((s) => {
+      const d = this.device(s, token);
+      const r = s.sessions.find(
+        (r) => r.seatId === d.seatId && r.status === "active",
+      );
+      return {
+        device: {
+          id: d.id,
+          seatId: d.seatId,
+          seatName: s.seats.find((x) => x.id === d.seatId)!.name,
+        },
+        session: r ? this.cleanSession(r) : null,
+        products: s.products.filter((p) => p.enabled),
+        extensions: s.extensions.filter((e) => e.enabled),
+        games: s.games
+          .filter((g) => g.enabled)
+          .map((g) => ({
+            ...g,
+            executable: g.paths[d.seatId] || g.executable,
+          })),
+        orders: r ? s.orders.filter((o) => o.sessionId === r.id) : [],
+        commands: s.commands.filter(
+          (c) => c.deviceId === d.id && c.status === "pending",
+        ),
+        exitRequests: s.exitRequests
+          .filter((x) => x.deviceId === d.id)
+          .slice(-10),
+        serverNow: this.now(),
+      };
+    });
+  }
+  adminState(): AdminState {
+    return this.tx((s) => ({
+      settings: s.settings,
+      seats: this.seats(s).map((seat) => ({
+        ...seat,
+        deviceId: s.devices.find((d) => d.seatId === seat.id)?.id,
+      })),
+      sessions: s.sessions.map((r) => this.cleanSession(r)),
+      products: s.products,
+      extensions: s.extensions,
+      games: s.games,
+      orders: s.orders,
+      commands: s.commands,
+      exitRequests: s.exitRequests,
+      audit: s.audit.slice(-500).reverse(),
+      serverNow: this.now(),
+    }));
+  }
 }

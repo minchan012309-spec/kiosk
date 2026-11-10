@@ -1,17 +1,484 @@
-import{useEffect,useState}from'react';import type{DeviceState}from'../../../../packages/shared/src/contracts';import{money,duration}from'../api';import{Brand,ErrorMessage}from'../App';
-export function Launcher({overlay=false}:{overlay?:boolean}){const[state,setState]=useState<(DeviceState&{online:boolean;remaining:number;currentGame?:string;error?:string;configured?:boolean;registered?:boolean;serverUrl?:string})>();const[error,setError]=useState('');const[busy,setBusy]=useState(false);const[tab,setTab]=useState<'games'|'shop'|'time'|'exit'>('games');const[code,setCode]=useState('');const[recovery,setRecovery]=useState('');const[notice,setNotice]=useState('');const[password,setPassword]=useState('');
- const call=async(action:string,payload?:any)=>{if(busy)return;setBusy(true);setError('');try{return await window.cafe!.invoke(action,payload);}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
- useEffect(()=>{if(!window.cafe){setError('Windows PC 런처에서 열어 주세요. 웹 브라우저에서는 게임을 실행할 수 없습니다.');return;}void window.cafe.invoke('state').then(setState).catch(e=>setError(e.message));return window.cafe.onState(setState);},[]);
- const closeOverlay=()=>void call('closeOverlay');
- if(!state?.registered)return <div className="auth-screen"><Brand/><div className="panel auth-card"><div className="eyebrow">CONNECT YOUR PC</div><h1>PC 런처 연결</h1><p className="muted">운영자가 처음 한 번만 설정하면 됩니다.</p><ol className="setup-steps"><li><strong>서버 연결 파일 불러오기</strong><p>서버의 운영 설정에서 저장한 .pcclub 파일을 선택하세요.</p><button disabled={busy||!window.cafe} onClick={()=>void call('importConnection').then(s=>{if(s)setState(s);})}>연결 파일 선택</button>{state?.serverUrl&&<small className="green-text">✓ {state.serverUrl}</small>}</li><li><strong>좌석 등록 코드 입력</strong><p>관리자 → 좌석 / PC → PC 등록 코드에서 발급합니다.</p><form onSubmit={async e=>{e.preventDefault();const r=await call('enroll',{code});if(r?.recoveryCode){setRecovery(r.recoveryCode);}if(r?.state)setState(r.state);}}><label>PC 등록 코드<input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} autoComplete="off" maxLength={20} required placeholder="12자리 등록 코드"/></label><button className="primary wide" disabled={busy||!state?.configured}>이 PC 등록</button></form></li></ol><ErrorMessage message={error}/><button className="subtle" onClick={()=>void call('quitUnregistered')}>설정 종료</button></div></div>;
- if(recovery)return <div className="auth-screen"><section className="panel auth-card"><h1>비상 종료 코드 보관</h1><p>이 코드는 운영자만 별도로 보관하세요. 서버와 연결이 끊겼을 때 런처를 종료할 수 있습니다.</p><div className="recovery-code">{recovery}</div><p className="fine">다시 표시되지 않습니다. 학생에게 보여주지 마세요.</p><button className="primary wide" onClick={()=>setRecovery('')}>운영자가 안전하게 보관했습니다</button></section></div>;
- const session=state.session;
- const exitForm=<><h2>관리자 승인으로 종료</h2><p className="muted">운영자에게 원격 승인을 요청하거나, 현장에서 관리자 비밀번호를 입력하세요.</p><button className="primary wide" disabled={busy||!state.online} onClick={()=>void call('requestExit').then(r=>{if(r)setNotice('관리자에게 종료 승인 요청을 보냈습니다.');})}>원격 종료 승인 요청</button>{state.exitRequests?.slice(-1).map(r=><p className="fine" key={r.id}>최근 요청: {{pending:'승인 대기',approved:'승인됨',rejected:'거절됨',expired:'만료됨'}[r.status]}</p>)}<form onSubmit={e=>{e.preventDefault();void call('exitPassword',{password});setPassword('');}}><label>관리자 비밀번호<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required maxLength={128} autoComplete="off"/></label><button disabled={busy||!state.online}>현장 승인 후 종료</button></form><details><summary>연결 장애 시 비상 종료</summary><form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void call('recoverExit',{code:f.get('recovery')});}}><label>운영자 비상 종료 코드<input name="recovery" type="password" autoComplete="off" maxLength={128} required/></label><button className="danger" disabled={busy}>비상 종료</button></form></details></>;
- if(!session&&!overlay)return <div className="auth-screen launcher-login"><Brand/><div className="panel auth-card"><span className="badge">PC {state.device?.seatName}</span><div className="eyebrow">YOUR NEXT GAME STARTS HERE</div><h1>플레이할 준비됐나요?</h1><p className="muted">키오스크에서 받은 로그인 번호를 입력하세요.</p><form onSubmit={async e=>{e.preventDefault();await call('login',{code});setCode('');}}><label>로그인 번호<input className="code-input" value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,''))} inputMode="numeric" pattern="\d{10}" maxLength={10} required placeholder="0000000000" autoComplete="off"/></label><button className="primary wide" disabled={busy||!state.online}>입장하기 ↗</button></form><ErrorMessage message={error||state.error||''}/>{!state.online&&<p className="error">서버 연결을 기다리고 있어요. 지금은 로그인할 수 없습니다.</p>}<details><summary>관리자 · 프로그램 종료</summary>{exitForm}</details></div></div>;
- return <div className={overlay?'overlay-shell':'launcher-shell'}>{!overlay&&<header><Brand/><span className="badge">PC {state.device?.seatName} · {session?.name} 님</span><button className="subtle" onClick={()=>setTab('exit')}>종료 요청</button></header>}<div className="launcher-top"><div><div className="eyebrow">{overlay?'QUICK MENU':'WELCOME TO YOUR PLAYGROUND'}</div><h1>{overlay?'플레이 메뉴':'오늘은 어떤 게임?'}</h1></div>{overlay&&<button onClick={closeOverlay}>게임으로 돌아가기 ×</button>}</div><div className="balance-bar"><span>남은 시간<strong className="mono">{duration(state.remaining||0)}</strong></span><span>내 머니<strong>{money(session?.money||0)} <small>M</small></strong></span><span className={state.online?'green-text':'danger-text'}>{state.online?'● 서버 연결됨':'● 연결 끊김 · 구매 불가'}</span></div><nav className="launcher-tabs">{([['games','게임 라이브러리'],['shop','간식 주문'],['time','시간 연장'],['exit','종료 승인']] as const).map(([key,label])=><button className={tab===key?'active':''} onClick={()=>setTab(key)} key={key}>{label}</button>)}</nav><ErrorMessage message={error||state.error||''}/>{notice&&<div className="notice">{notice}</div>}
- {tab==='games'&&<><p className="muted">게임 중 화면 오른쪽 위에 마우스를 1초간 두면 이 메뉴가 열려요.</p><div className="games-grid">{!state.games?.length&&<div className="empty">운영자가 게임을 준비하고 있습니다.</div>}{state.games?.map((g,i)=><button className={`game-card game-${i%4}`} key={g.id} disabled={busy||!session} onClick={()=>{if(state.currentGame&&state.currentGame!==g.id&&!confirm('현재 게임을 종료하고 전환합니다. 저장하지 않은 진행이 사라질 수 있습니다. 계속할까요?'))return;void call('launchGame',{gameId:g.id}).then(r=>{if(r&&overlay)closeOverlay();});}}><span className="game-art">{['✦','◈','⊕','⌘'][i%4]}</span><span className="game-content"><small>{state.currentGame===g.id?'NOW PLAYING':'READY TO PLAY'}</small><strong>{g.name}</strong><span>{g.description||'클릭하여 게임 시작'} <b>↗</b></span></span></button>)}</div>{state.currentGame&&<button disabled={busy} onClick={()=>{if(confirm('게임을 종료할까요? 저장하지 않은 진행은 사라질 수 있습니다.'))void call('stopGame');}}>현재 게임 종료</button>}</>}
- {tab==='shop'&&<div className="shop-grid">{!state.products?.length&&<div className="empty">등록된 간식이 없습니다.</div>}{state.products?.map(p=><section className="panel shop-card" key={p.id}><div className="snack-art">▧</div><h2>{p.name}</h2><p className="muted">남은 수량 {p.stock}개</p><strong>{money(p.price)} M</strong><button className="primary wide" disabled={busy||!state.online||!session||p.stock<1||session.money<p.price} onClick={()=>{if(confirm(`${p.name}을 ${money(p.price)} 머니에 주문할까요?`))void call('purchase',{productId:p.id,key:crypto.randomUUID()}).then(r=>{if(r)setNotice('주문이 접수됐어요. 운영자가 자리로 가져다 드립니다.');});}}>{p.stock<1?'품절':'주문하기'}</button></section>)}<section className="panel wide"><h2>내 주문</h2>{state.orders?.map(o=><div className="list-row" key={o.id}><span>{o.name}</span><span className="tag">{{received:'주문 접수',preparing:'준비 중',delivered:'전달 완료',cancelled:'취소 / 환불'}[o.status]}</span></div>)}</section></div>}
- {tab==='time'&&<div className="shop-grid">{!state.extensions?.length&&<div className="empty">연장 상품이 없습니다.</div>}{state.extensions?.map(e=><section className="panel shop-card" key={e.id}><div className="eyebrow">MORE TIME, MORE PLAY</div><h2>{e.name}</h2><strong className="time-price">+{e.seconds/60}<small>분</small></strong><p>{money(e.price)} M</p><button className="primary wide" disabled={busy||!state.online||!session||session.money<e.price} onClick={()=>{if(confirm(`${money(e.price)} 머니를 사용해 ${e.seconds/60}분 연장할까요?`))void call('extend',{extensionId:e.id,key:crypto.randomUUID()}).then(r=>{if(r)setNotice('시간이 연장됐어요. 즐겁게 플레이하세요!');});}}>시간 연장</button></section>)}</div>}
- {tab==='exit'&&<section className="panel exit-panel">{exitForm}</section>}
- </div>;
+import { useEffect, useState } from "react";
+import type { DeviceState } from "../../../../packages/shared/src/contracts";
+import { money, duration } from "../api";
+import { Brand, ErrorMessage } from "../App";
+export function Launcher({ overlay = false }: { overlay?: boolean }) {
+  const [state, setState] = useState<
+    DeviceState & {
+      online: boolean;
+      remaining: number;
+      currentGame?: string;
+      error?: string;
+      configured?: boolean;
+      registered?: boolean;
+      serverUrl?: string;
+    }
+  >();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"games" | "shop" | "time" | "exit">("games");
+  const [code, setCode] = useState("");
+  const [recovery, setRecovery] = useState("");
+  const [notice, setNotice] = useState("");
+  const [password, setPassword] = useState("");
+  const call = async (action: string, payload?: any) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      return await window.cafe!.invoke(action, payload);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (!window.cafe) {
+      setError(
+        "Windows PC 런처에서 열어 주세요. 웹 브라우저에서는 게임을 실행할 수 없습니다.",
+      );
+      return;
+    }
+    void window.cafe
+      .invoke("state")
+      .then(setState)
+      .catch((e) => setError(e.message));
+    return window.cafe.onState(setState);
+  }, []);
+  const closeOverlay = () => void call("closeOverlay");
+  if (!state?.registered)
+    return (
+      <div className="auth-screen">
+        <Brand />
+        <div className="panel auth-card">
+          <div className="eyebrow">CONNECT YOUR PC</div>
+          <h1>PC 런처 연결</h1>
+          <p className="muted">운영자가 처음 한 번만 설정하면 됩니다.</p>
+          <ol className="setup-steps">
+            <li>
+              <strong>서버 연결 파일 불러오기</strong>
+              <p>서버의 운영 설정에서 저장한 .pcclub 파일을 선택하세요.</p>
+              <button
+                disabled={busy || !window.cafe}
+                onClick={() =>
+                  void call("importConnection").then((s) => {
+                    if (s) setState(s);
+                  })
+                }
+              >
+                연결 파일 선택
+              </button>
+              {state?.serverUrl && (
+                <small className="green-text">✓ {state.serverUrl}</small>
+              )}
+            </li>
+            <li>
+              <strong>좌석 등록 코드 입력</strong>
+              <p>관리자 → 좌석 / PC → PC 등록 코드에서 발급합니다.</p>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const r = await call("enroll", { code });
+                  if (r?.recoveryCode) {
+                    setRecovery(r.recoveryCode);
+                  }
+                  if (r?.state) setState(r.state);
+                }}
+              >
+                <label>
+                  PC 등록 코드
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    autoComplete="off"
+                    maxLength={20}
+                    required
+                    placeholder="12자리 등록 코드"
+                  />
+                </label>
+                <button
+                  className="primary wide"
+                  disabled={busy || !state?.configured}
+                >
+                  이 PC 등록
+                </button>
+              </form>
+            </li>
+          </ol>
+          <ErrorMessage message={error} />
+          <button
+            className="subtle"
+            onClick={() => void call("quitUnregistered")}
+          >
+            설정 종료
+          </button>
+        </div>
+      </div>
+    );
+  if (recovery)
+    return (
+      <div className="auth-screen">
+        <section className="panel auth-card">
+          <h1>비상 종료 코드 보관</h1>
+          <p>
+            이 코드는 운영자만 별도로 보관하세요. 서버와 연결이 끊겼을 때 런처를
+            종료할 수 있습니다.
+          </p>
+          <div className="recovery-code">{recovery}</div>
+          <p className="fine">
+            다시 표시되지 않습니다. 학생에게 보여주지 마세요.
+          </p>
+          <button className="primary wide" onClick={() => setRecovery("")}>
+            운영자가 안전하게 보관했습니다
+          </button>
+        </section>
+      </div>
+    );
+  const session = state.session;
+  const exitForm = (
+    <>
+      <h2>관리자 승인으로 종료</h2>
+      <p className="muted">
+        운영자에게 원격 승인을 요청하거나, 현장에서 관리자 비밀번호를
+        입력하세요.
+      </p>
+      <button
+        className="primary wide"
+        disabled={busy || !state.online}
+        onClick={() =>
+          void call("requestExit").then((r) => {
+            if (r) setNotice("관리자에게 종료 승인 요청을 보냈습니다.");
+          })
+        }
+      >
+        원격 종료 승인 요청
+      </button>
+      {state.exitRequests?.slice(-1).map((r) => (
+        <p className="fine" key={r.id}>
+          최근 요청:{" "}
+          {
+            {
+              pending: "승인 대기",
+              approved: "승인됨",
+              rejected: "거절됨",
+              expired: "만료됨",
+            }[r.status]
+          }
+        </p>
+      ))}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void call("exitPassword", { password });
+          setPassword("");
+        }}
+      >
+        <label>
+          관리자 비밀번호
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            maxLength={128}
+            autoComplete="off"
+          />
+        </label>
+        <button disabled={busy || !state.online}>현장 승인 후 종료</button>
+      </form>
+      <details>
+        <summary>연결 장애 시 비상 종료</summary>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            void call("recoverExit", { code: f.get("recovery") });
+          }}
+        >
+          <label>
+            운영자 비상 종료 코드
+            <input
+              name="recovery"
+              type="password"
+              autoComplete="off"
+              maxLength={128}
+              required
+            />
+          </label>
+          <button className="danger" disabled={busy}>
+            비상 종료
+          </button>
+        </form>
+      </details>
+    </>
+  );
+  if (!session && !overlay)
+    return (
+      <div className="auth-screen launcher-login">
+        <Brand />
+        <div className="panel auth-card">
+          <span className="badge">PC {state.device?.seatName}</span>
+          <div className="eyebrow">YOUR NEXT GAME STARTS HERE</div>
+          <h1>플레이할 준비됐나요?</h1>
+          <p className="muted">키오스크에서 받은 로그인 번호를 입력하세요.</p>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await call("login", { code });
+              setCode("");
+            }}
+          >
+            <label>
+              로그인 번호
+              <input
+                className="code-input"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                pattern="\d{10}"
+                maxLength={10}
+                required
+                placeholder="0000000000"
+                autoComplete="off"
+              />
+            </label>
+            <button className="primary wide" disabled={busy || !state.online}>
+              입장하기 ↗
+            </button>
+          </form>
+          <ErrorMessage message={error || state.error || ""} />
+          {!state.online && (
+            <p className="error">
+              서버 연결을 기다리고 있어요. 지금은 로그인할 수 없습니다.
+            </p>
+          )}
+          <details>
+            <summary>관리자 · 프로그램 종료</summary>
+            {exitForm}
+          </details>
+        </div>
+      </div>
+    );
+  return (
+    <div className={overlay ? "overlay-shell" : "launcher-shell"}>
+      {!overlay && (
+        <header>
+          <Brand />
+          <span className="badge">
+            PC {state.device?.seatName} · {session?.name} 님
+          </span>
+          <button className="subtle" onClick={() => setTab("exit")}>
+            종료 요청
+          </button>
+        </header>
+      )}
+      <div className="launcher-top">
+        <div>
+          <div className="eyebrow">
+            {overlay ? "QUICK MENU" : "WELCOME TO YOUR PLAYGROUND"}
+          </div>
+          <h1>{overlay ? "플레이 메뉴" : "오늘은 어떤 게임?"}</h1>
+        </div>
+        {overlay && <button onClick={closeOverlay}>게임으로 돌아가기 ×</button>}
+      </div>
+      <div className="balance-bar">
+        <span>
+          남은 시간
+          <strong className="mono">{duration(state.remaining || 0)}</strong>
+        </span>
+        <span>
+          내 머니
+          <strong>
+            {money(session?.money || 0)} <small>M</small>
+          </strong>
+        </span>
+        <span className={state.online ? "green-text" : "danger-text"}>
+          {state.online ? "● 서버 연결됨" : "● 연결 끊김 · 구매 불가"}
+        </span>
+      </div>
+      <nav className="launcher-tabs">
+        {(
+          [
+            ["games", "게임 라이브러리"],
+            ["shop", "간식 주문"],
+            ["time", "시간 연장"],
+            ["exit", "종료 승인"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            className={tab === key ? "active" : ""}
+            onClick={() => setTab(key)}
+            key={key}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <ErrorMessage message={error || state.error || ""} />
+      {notice && <div className="notice">{notice}</div>}
+      {tab === "games" && (
+        <>
+          <p className="muted">
+            게임 중 화면 오른쪽 위에 마우스를 1초간 두면 이 메뉴가 열려요.
+          </p>
+          <div className="games-grid">
+            {!state.games?.length && (
+              <div className="empty">운영자가 게임을 준비하고 있습니다.</div>
+            )}
+            {state.games?.map((g, i) => (
+              <button
+                className={`game-card game-${i % 4}`}
+                key={g.id}
+                disabled={busy || !session}
+                onClick={() => {
+                  if (
+                    state.currentGame &&
+                    state.currentGame !== g.id &&
+                    !confirm(
+                      "현재 게임을 종료하고 전환합니다. 저장하지 않은 진행이 사라질 수 있습니다. 계속할까요?",
+                    )
+                  )
+                    return;
+                  void call("launchGame", { gameId: g.id }).then((r) => {
+                    if (r && overlay) closeOverlay();
+                  });
+                }}
+              >
+                <span className="game-art">{["✦", "◈", "⊕", "⌘"][i % 4]}</span>
+                <span className="game-content">
+                  <small>
+                    {state.currentGame === g.id
+                      ? "NOW PLAYING"
+                      : "READY TO PLAY"}
+                  </small>
+                  <strong>{g.name}</strong>
+                  <span>
+                    {g.description || "클릭하여 게임 시작"} <b>↗</b>
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+          {state.currentGame && (
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (
+                  confirm(
+                    "게임을 종료할까요? 저장하지 않은 진행은 사라질 수 있습니다.",
+                  )
+                )
+                  void call("stopGame");
+              }}
+            >
+              현재 게임 종료
+            </button>
+          )}
+        </>
+      )}
+      {tab === "shop" && (
+        <div className="shop-grid">
+          {!state.products?.length && (
+            <div className="empty">등록된 간식이 없습니다.</div>
+          )}
+          {state.products?.map((p) => (
+            <section className="panel shop-card" key={p.id}>
+              <div className="snack-art">▧</div>
+              <h2>{p.name}</h2>
+              <p className="muted">남은 수량 {p.stock}개</p>
+              <strong>{money(p.price)} M</strong>
+              <button
+                className="primary wide"
+                disabled={
+                  busy ||
+                  !state.online ||
+                  !session ||
+                  p.stock < 1 ||
+                  session.money < p.price
+                }
+                onClick={() => {
+                  if (
+                    confirm(`${p.name}을 ${money(p.price)} 머니에 주문할까요?`)
+                  )
+                    void call("purchase", {
+                      productId: p.id,
+                      key: crypto.randomUUID(),
+                    }).then((r) => {
+                      if (r)
+                        setNotice(
+                          "주문이 접수됐어요. 운영자가 자리로 가져다 드립니다.",
+                        );
+                    });
+                }}
+              >
+                {p.stock < 1 ? "품절" : "주문하기"}
+              </button>
+            </section>
+          ))}
+          <section className="panel wide">
+            <h2>내 주문</h2>
+            {state.orders?.map((o) => (
+              <div className="list-row" key={o.id}>
+                <span>{o.name}</span>
+                <span className="tag">
+                  {
+                    {
+                      received: "주문 접수",
+                      preparing: "준비 중",
+                      delivered: "전달 완료",
+                      cancelled: "취소 / 환불",
+                    }[o.status]
+                  }
+                </span>
+              </div>
+            ))}
+          </section>
+        </div>
+      )}
+      {tab === "time" && (
+        <div className="shop-grid">
+          {!state.extensions?.length && (
+            <div className="empty">연장 상품이 없습니다.</div>
+          )}
+          {state.extensions?.map((e) => (
+            <section className="panel shop-card" key={e.id}>
+              <div className="eyebrow">MORE TIME, MORE PLAY</div>
+              <h2>{e.name}</h2>
+              <strong className="time-price">
+                +{e.seconds / 60}
+                <small>분</small>
+              </strong>
+              <p>{money(e.price)} M</p>
+              <button
+                className="primary wide"
+                disabled={
+                  busy || !state.online || !session || session.money < e.price
+                }
+                onClick={() => {
+                  if (
+                    confirm(
+                      `${money(e.price)} 머니를 사용해 ${e.seconds / 60}분 연장할까요?`,
+                    )
+                  )
+                    void call("extend", {
+                      extensionId: e.id,
+                      key: crypto.randomUUID(),
+                    }).then((r) => {
+                      if (r)
+                        setNotice("시간이 연장됐어요. 즐겁게 플레이하세요!");
+                    });
+                }}
+              >
+                시간 연장
+              </button>
+            </section>
+          ))}
+        </div>
+      )}
+      {tab === "exit" && (
+        <section className="panel exit-panel">{exitForm}</section>
+      )}
+    </div>
+  );
 }
