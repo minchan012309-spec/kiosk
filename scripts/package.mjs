@@ -30,6 +30,7 @@ for (const role of ["server", "station"]) {
     }),
   );
   await build({
+    publish: "never",
     targets: Platform.WINDOWS.createTarget(["nsis"], Arch.x64),
     config: {
       appId: "school.pcclub." + role,
