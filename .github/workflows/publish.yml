@@ -1,4 +1,5 @@
 name: Publish PC Club ZIP
+# Publish only the final ZIP; electron-builder automatic publishing is disabled.
 on:
   push:
     branches: [main]
