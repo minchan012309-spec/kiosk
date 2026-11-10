@@ -1,5 +1,5 @@
 name: Publish PC Club ZIP
-# Publish the floating status button in installed and portable Windows packages.
+# Publish 1.2: clean shutdown, native key guard, seat layouts, previews and dark startup.
 on:
   push:
     branches: [main]
@@ -19,6 +19,10 @@ jobs:
           cache: npm
       - name: Install build dependencies
         run: npm ci
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build Windows Alt-F4 guard
+        shell: cmd
+        run: cl /nologo /EHsc /O2 /W4 native\keyguard.cpp /Fe:build\pcclub-keyguard.exe /Fo:build\keyguard.obj user32.lib
       - name: Build cloud console and launcher
         run: npm run build
       - name: Create installers with custom Windows icons
@@ -36,6 +40,8 @@ jobs:
           New-Item -ItemType Directory -Path release/Supabase-Setup -Force | Out-Null
           Copy-Item supabase/migrations/001_club.sql release/Supabase-Setup/001_club.sql
           Copy-Item supabase/002_first_owner.sql release/Supabase-Setup/002_first_owner.sql
+          Copy-Item supabase/migrations/003_layout_media_restart.sql release/Supabase-Setup/003_layout_media_restart.sql
+          Copy-Item docs/UPDATE-1.2-KO.md release/Supabase-Setup/UPDATE-1.2-KO.md
           Copy-Item supabase/functions/club-admin/index.ts release/Supabase-Setup/club-admin.ts
           Copy-Item docs/SUPABASE-SETUP-KO.md release/Supabase-Setup/SETUP-KO.md
           Compress-Archive -Path release/Supabase-Setup/* -DestinationPath release/Supabase-Setup.zip -CompressionLevel Optimal
@@ -52,15 +58,16 @@ jobs:
             New-Item -ItemType Directory -Path $folder -Force | Out-Null
             Copy-Item "release/$($item.Role)/win-unpacked/*" $folder -Recurse
             Copy-Item docs/PORTABLE-KO.md "$folder/사용방법.md"
+            Copy-Item docs/UPDATE-1.2-KO.md "$folder/UPDATE-1.2-KO.md"
             Compress-Archive -Path $folder -DestinationPath "release/PC-Club-$($item.Name)-Portable.zip" -CompressionLevel Optimal
           }
           Compress-Archive -Path windows-lockdown/* -DestinationPath release/PC-Club-Windows-Lockdown.zip -CompressionLevel Optimal
       - name: Publish cloud release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.1
+          tag_name: v1.2.0
           target_commitish: ${{ github.sha }}
-          name: PC Club 1.1.1 · Cloud
+          name: PC Club 1.2.0 · Cloud
           fail_on_unmatched_files: true
           files: |
             release/PC-Club-Installers.zip
@@ -70,9 +77,15 @@ jobs:
             release/Supabase-Setup.zip
             release/Supabase-Setup/001_club.sql
             release/Supabase-Setup/002_first_owner.sql
+            release/Supabase-Setup/003_layout_media_restart.sql
+            release/Supabase-Setup/UPDATE-1.2-KO.md
             release/Supabase-Setup/club-admin.ts
             release/Supabase-Setup/SETUP-KO.md
           body: |
+            기존 사용자는 003_layout_media_restart.sql을 Supabase SQL Editor에서 먼저 실행하고 모든 Station/Admin을 업데이트하세요.
+            종료 시 창 파괴 오류 수정, Windows 전용 Alt+F4 보호, 좌석 삭제·드래그 배치·순서 변경, 원격 재부팅, 상품·게임 이미지 업로드, 로고 로딩/대기 화면과 기본 다크 모드를 포함합니다.
+            자세한 절차는 UPDATE-1.2-KO.md에 있습니다.
+
             게임·프로그램 위 오른쪽 상단 화살표 버튼으로 시간·머니·주문 상태창을 열 수 있습니다.
             독점 전체화면 게임은 창 모드 또는 테두리 없는 전체화면을 사용하세요.
 
