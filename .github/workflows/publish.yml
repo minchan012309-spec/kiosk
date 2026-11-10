@@ -61,6 +61,11 @@ jobs:
             Copy-Item docs/UPDATE-1.2-KO.md "$folder/UPDATE-1.2-KO.md"
             Compress-Archive -Path $folder -DestinationPath "release/PC-Club-$($item.Name)-Portable.zip" -CompressionLevel Optimal
           }
+          New-Item -ItemType Directory -Path release/PC-Club-Portable -Force | Out-Null
+          Copy-Item release/PC-Club-Station-Portable release/PC-Club-Portable/Station -Recurse
+          Copy-Item release/PC-Club-Admin-Portable release/PC-Club-Portable/Server -Recurse
+          Copy-Item docs/PORTABLE-KO.md release/PC-Club-Portable/사용방법.md
+          Compress-Archive -Path release/PC-Club-Portable/* -DestinationPath release/PC-Club-Portable.zip -CompressionLevel Optimal
           Compress-Archive -Path windows-lockdown/* -DestinationPath release/PC-Club-Windows-Lockdown.zip -CompressionLevel Optimal
       - name: Publish cloud release
         uses: softprops/action-gh-release@v2
@@ -71,6 +76,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release/PC-Club-Installers.zip
+            release/PC-Club-Portable.zip
             release/PC-Club-Admin-Portable.zip
             release/PC-Club-Station-Portable.zip
             release/PC-Club-Windows-Lockdown.zip
@@ -92,7 +98,7 @@ jobs:
             Supabase 클라우드 버전입니다. 로컬 서버는 실행하지 않습니다.
 
             1. Supabase-Setup.zip의 SQL·최초 소유자·Edge Function 설정을 먼저 완료하세요.
-            2. 설치형은 PC-Club-Installers.zip, 무설치형은 Admin-Portable.zip / Station-Portable.zip을 선택하세요.
+            2. 설치형은 PC-Club-Installers.zip, 무설치형은 PC-Club-Portable.zip 하나를 받으세요. Station / Server 폴더가 함께 들어 있습니다.
             3. 무설치형은 ZIP 전체를 풀고 폴더 안의 PC Club Admin.exe / PC Club Station.exe를 실행하세요. PC·키오스크 등록은 동일합니다.
             4. 사용자 PC에서 관리자 인증 후 실제 게임 실행 파일을 선택하세요.
 

@@ -41,3 +41,7 @@ Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](
 ### 1.2 업데이트
 
 [업데이트 안내](docs/UPDATE-1.2-KO.md). 기존 Supabase 프로젝트는 [003_layout_media_restart.sql](supabase/migrations/003_layout_media_restart.sql)을 먼저 적용하세요. 좌석 삭제·드래그 배치·순서 변경, 원격 재부팅, 상품·게임 미리보기 업로드, 로고 로딩 화면·기본 다크 모드, 종료 타이머 정리와 Windows 전용 Alt+F4 보호를 추가했습니다.
+
+### 무설치 통합 다운로드
+
+[PC-Club-Portable.zip 하나 받기](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Portable.zip). 한 번 압축 해제하면 학생용 `Station`과 관리자용 `Server` 폴더가 나옵니다. 학생 PC에서는 Station만 실행하세요.

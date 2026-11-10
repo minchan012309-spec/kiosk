@@ -1,7 +1,20 @@
 # PC Club 무설치형 (Windows x64)
 
-- 관리자·키오스크 노트북: PC-Club-Admin-Portable.zip
-- 학생 게임용 노트북: PC-Club-Station-Portable.zip
+**PC-Club-Portable.zip 하나를 받아 전체 압축 해제하세요.**
+
+```text
+Station/
+  PC Club Station.exe
+  (동봉 파일 전체)
+Server/
+  PC Club Admin.exe
+  (동봉 파일 전체)
+사용방법.md
+```
+
+학생 게임용 노트북은 `Station/PC Club Station.exe`를, 관리자·키오스크 노트북은 `Server/PC Club Admin.exe`를 실행하세요. Server 폴더는 관리자 프로그램입니다. 클라우드 서버는 Supabase에서 동작합니다. 학생 PC에서는 Station만 실행하면 됩니다.
+
+기존 개별 Admin/Station ZIP도 계속 제공하지만 통합 ZIP 하나로 두 프로그램을 모두 받을 수 있습니다.
 
 ZIP을 **전체 압축 해제**한 다음 `PC Club Admin.exe` 또는 `PC Club Station.exe`를 실행하세요. ZIP 미리보기 안에서 실행하거나 EXE만 꺼내면 실행되지 않습니다. `resources`, DLL 등 동봉 파일을 함께 유지해야 합니다. 설치, Node.js 설치, 로컬 서버 실행은 필요 없습니다. Supabase 최초 SQL/Edge Function 설정과 인터넷 연결은 기존 설치형과 동일하게 필요합니다.
 
