@@ -1,5 +1,5 @@
 name: Publish Cloud Admin Web
-# Redeploy the compiled React app after the reported README page overwrite.
+# Explicitly select workflow publishing so branch/Jekyll builds cannot replace the app.
 on:
   push:
     branches: [main]
@@ -34,12 +34,46 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       - run: npm run build
+      - name: Select GitHub Actions as the Pages publishing source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pages" --jq '{build_type: .build_type, source: .source}'
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/pages" -f build_type=workflow
+          gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.build_type' | grep -Fx workflow
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Mark the web artifact for delivery verification
+        run: |
+          touch dist/web/.nojekyll
+          printf '%s' "$GITHUB_SHA" > dist/web/pcclub-build.txt
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist/web
       - name: Deploy web console
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify the public website serves this app build
+        env:
+          SITE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python - <<'PYCODE'
+          import os, time, urllib.request
+          base = os.environ['SITE_URL'].rstrip('/') + '/'
+          expected = os.environ['GITHUB_SHA']
+          for attempt in range(12):
+              try:
+                  nonce = str(int(time.time()))
+                  build = urllib.request.urlopen(base + 'pcclub-build.txt?build=' + nonce, timeout=15).read().decode().strip()
+                  page = urllib.request.urlopen(base + '?build=' + nonce, timeout=15).read().decode()
+                  if build == expected and 'id="root"' in page and 'type="module"' in page:
+                      print('Public Pages URL serves the compiled PC Club app:', base + '#/admin')
+                      break
+                  print('Waiting for the compiled app to reach Pages CDN', attempt + 1)
+              except Exception as error:
+                  print('Waiting for Pages CDN:', str(error))
+              time.sleep(5)
+          else:
+              raise SystemExit('Pages is not serving this app build; deployment must not be reported as verified.')
+          PYCODE
