@@ -1,5 +1,5 @@
 name: Publish PC Club ZIP
-# Publish 1.2: clean shutdown, native key guard, seat layouts, previews and dark startup.
+# Publish 1.2 with restart protocol compatibility and duplicate request protection.
 on:
   push:
     branches: [main]
