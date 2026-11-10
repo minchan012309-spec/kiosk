@@ -1,0 +1,4 @@
+import{useEffect,useState}from'react';import{Kiosk}from'./pages/Kiosk';import{Admin}from'./pages/Admin';import{Launcher}from'./pages/Launcher';
+export function App(){const[route,setRoute]=useState(location.hash.slice(1)||location.pathname);useEffect(()=>{const f=()=>setRoute(location.hash.slice(1)||location.pathname);window.addEventListener('hashchange',f);return()=>window.removeEventListener('hashchange',f);},[]);if(route.startsWith('/launcher')||route.startsWith('/overlay'))return <Launcher overlay={route.startsWith('/overlay')}/>;if(route.startsWith('/kiosk'))return <Kiosk/>;return <Admin/>;}
+export function Brand(){return <span className="brand"><span className="brand-icon">P<span>◈</span></span><span>PC CLUB<small>FESTIVAL EDITION</small></span></span>;}
+export function ErrorMessage({message}:{message:string}){return message?<div className="error" role="alert">{message}</div>:null;}
