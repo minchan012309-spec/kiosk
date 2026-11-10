@@ -1,5 +1,8 @@
 name: Publish Cloud Admin Web
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/pages.yml']
   workflow_run:
     workflows: ['Publish PC Club ZIP']
     types: [completed]
@@ -13,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

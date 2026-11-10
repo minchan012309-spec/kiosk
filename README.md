@@ -4,6 +4,8 @@
 
 **[폰 / 관리자 웹](https://minchan012309-spec.github.io/kiosk/#/admin)** · **[키오스크 웹](https://minchan012309-spec.github.io/kiosk/#/kiosk)**
 
+폰 웹을 처음 사용하려면 GitHub 저장소 Settings → Pages → Source를 **GitHub Actions**로 설정해야 합니다.
+
 로컬 서버 없이 Supabase로 좌석·시간·머니·주문을 연결합니다. 먼저 [Supabase 최초 설정](docs/SUPABASE-SETUP-KO.md)에 따라 SQL·최초 소유자·계정 관리 Edge Function을 등록하세요.
 
 - 대기 화면 → 키오스크 이름·학번·4~6자리 비밀번호 등록 → 해당 PC 로그인 화면 자동 표시 → 비밀번호 입장 시 타이머 시작.
