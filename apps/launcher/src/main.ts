@@ -313,7 +313,7 @@ async function poll() {
   if (shuttingDown || !token || polling) return;
   polling = true;
   try {
-    await request("/device/heartbeat", {});
+    await request("/device/heartbeat", { protocol: 2 });
     if (pendingClose) {
       await request("/device/exit-requests", {
         reason: "Alt+F4 또는 종료 시도 차단",

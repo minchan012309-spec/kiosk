@@ -109,7 +109,7 @@ begin
   d=jsonb_build_object('id',new_id,'seatId',v->>'seatId','tokenHash',encode(extensions.digest(code,'sha256'),'hex'),'lastSeen',n);s=public.club_put(s,'devices',d);
   result=jsonb_build_object('token',code,'deviceId',new_id,'seatId',v->>'seatId','recoveryCode',k,'recoveryHash',extensions.crypt(k,extensions.gen_salt('bf',10)));
  elsif a='/device/heartbeat' then
-  signal=coalesce((d->>'lastSeen')::bigint,0)<n-15000;s=public.club_put(s,'devices',d||jsonb_build_object('lastSeen',n));result=jsonb_build_object('deviceId',d->>'id');
+  signal=coalesce((d->>'lastSeen')::bigint,0)<n-15000;s=public.club_put(s,'devices',d||jsonb_build_object('lastSeen',n,'protocol',coalesce((p_payload->>'protocol')::int,1)));result=jsonb_build_object('deviceId',d->>'id');
  elsif a='/reservations' then
   target=p_payload->>'seatId';v=public.club_find(s,'seats',target);
   if v is null or not (v->>'enabled')::boolean or not exists(select 1 from jsonb_array_elements(s->'devices')x where x->>'seatId'=target and (x->>'lastSeen')::bigint>n-15000) then raise exception '사용할 수 없거나 연결되지 않은 좌석입니다.'; end if;
@@ -166,7 +166,10 @@ begin
   v=public.club_find(s,'exitRequests',target);if v is null or v->>'status'<>'pending' or (v->>'expiresAt')::bigint<=n then raise exception '승인 요청이 만료됐거나 처리됐습니다.';end if;
   if (p_payload->>'approve')::boolean then item=public.club_find(s,'devices',v->>'deviceId');if item is null or (item->>'lastSeen')::bigint<n-15000 then raise exception 'PC가 오프라인입니다.';end if;item=jsonb_build_object('id',gen_random_uuid()::text,'deviceId',v->>'deviceId','type','exit','status','pending','expiresAt',n+60000);s=public.club_put(s,'commands',item);v=v||'{"status":"approved"}';else v=v||'{"status":"rejected"}';end if;s=public.club_put(s,'exitRequests',v);result=v;
  elsif a like '/admin/devices/%/restart' then
-  v=public.club_find(s,'devices',target);if v is null or (v->>'lastSeen')::bigint<n-15000 or coalesce((p_payload->>'confirm')::boolean,false)=false then raise exception '연결 상태와 재부팅 확인을 확인하세요.';end if;result=jsonb_build_object('id',gen_random_uuid()::text,'deviceId',target,'type','restart','status','pending','expiresAt',n+60000);s=public.club_put(s,'commands',result);
+  v=public.club_find(s,'devices',target);if v is null or (v->>'lastSeen')::bigint<n-15000 or coalesce((p_payload->>'confirm')::boolean,false)=false then raise exception '연결 상태와 재부팅 확인을 확인하세요.';end if;
+  if coalesce((v->>'protocol')::int,1)<2 then raise exception '이 PC의 Station을 1.2 이상으로 업데이트한 뒤 재부팅하세요.';end if;
+  select value into result from jsonb_array_elements(s->'commands') where value->>'deviceId'=target and value->>'type'='restart' and value->>'status' in ('pending','accepted') and (value->>'expiresAt')::bigint>n limit 1;
+  if result is null then result=jsonb_build_object('id',gen_random_uuid()::text,'deviceId',target,'type','restart','status','pending','expiresAt',n+60000);s=public.club_put(s,'commands',result);end if;
  elsif a like '/device/commands/%/ack' then
   item=public.club_find(s,'commands',target);code=p_payload->>'status';if item is null or item->>'deviceId'<>d->>'id' or (item->>'expiresAt')::bigint<=n or not(item->>'status'='pending' or (item->>'status'='accepted' and code='failed')) or code not in ('accepted','failed') then raise exception '명령이 만료됐거나 처리됐습니다.';end if;
   s=public.club_put(s,'commands',item||jsonb_build_object('status',code,'message',left(coalesce(p_payload->>'message',''),200)));if code='accepted' then for r in select value from jsonb_array_elements(s->'sessions') where value->>'seatId'=d->>'seatId' and value->>'status'<>'ended' loop s=public.club_put(s,'sessions',r||'{"status":"ended","codeHash":""}');end loop;end if;result='{"ok":true}';
