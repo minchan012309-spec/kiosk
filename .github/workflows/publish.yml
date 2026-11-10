@@ -8,7 +8,7 @@ permissions:
   contents: write
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -21,12 +21,17 @@ jobs:
       - name: Build application
         run: npm run build
       - name: Create Windows installers
-        run: npm run dist:win
-      - name: Bundle installers and instructions
-        shell: pwsh
+        shell: bash
         run: |
-          Copy-Item docs/operations.md release/INSTALL-KO.md
-          Compress-Archive -Path release/server/*Setup*.exe,release/station/*Setup*.exe,release/INSTALL-KO.md -DestinationPath release/PC-Club-Installers.zip -CompressionLevel NoCompression
+          if ! npm run dist:win > package.log 2>&1; then
+            tail -n 40 package.log
+            python3 -c "from pathlib import Path; s=Path('package.log').read_text()[-6000:]; print('::error::'+s.replace('%','%25').replace('\r','%0D').replace('\n','%0A'))"
+            exit 1
+          fi
+          cat package.log
+      - name: Bundle installers and instructions
+        shell: bash
+        run: zip -0 -j release/PC-Club-Installers.zip release/server/*Setup*.exe release/station/*Setup*.exe docs/operations.md
       - name: Publish downloadable ZIP
         uses: softprops/action-gh-release@v2
         with:
