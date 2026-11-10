@@ -1,3 +1,4 @@
+import { StatusHandle } from "./pages/StatusHandle";
 import { DialogHost } from "./dialogs";
 import { useBranding, ThemeSwitcher, BrandingProvider } from "./branding";
 import { useEffect, useState } from "react";
@@ -19,6 +20,7 @@ function Routes() {
   return <Admin />;
 }
 export function App() {
+  if (location.hash === "#/status-handle") return <StatusHandle />;
   return (
     <BrandingProvider>
       <Routes />

@@ -51,6 +51,7 @@ const root = app.isPackaged ? app.getAppPath() : resolve("."),
   configFile = join(dataDir, "cloud-station.json");
 let main: BrowserWindow | undefined,
   overlay: BrowserWindow | undefined,
+  statusHandle: BrowserWindow | undefined,
   kiosk: BrowserWindow | undefined,
   approvedQuit = false;
 let token = "",
@@ -224,6 +225,7 @@ function state() {
   };
 }
 function pushState() {
+  syncStatusHandle();
   for (const w of [main, overlay])
     if (w && !w.isDestroyed()) w.webContents.send("cafe:state", state());
 }
@@ -378,6 +380,57 @@ async function openKiosk() {
   });
   await kiosk.loadFile(join(webRoot, "index.html"), { hash: "/kiosk" });
 }
+async function createStatusHandle() {
+  statusHandle = makeWindow({
+    width: 64,
+    height: 64,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    focusable: false,
+    show: false,
+    hasShadow: false,
+  });
+  statusHandle.setAlwaysOnTop(true, "screen-saver");
+  statusHandle.on("close", (event) => {
+    if (!approvedQuit) event.preventDefault();
+  });
+  await statusHandle.loadFile(join(webRoot, "index.html"), {
+    hash: "/status-handle",
+  });
+  syncStatusHandle();
+}
+function syncStatusHandle() {
+  if (!statusHandle || statusHandle.isDestroyed()) return;
+  const visible =
+    !!token &&
+    !!deviceState?.session &&
+    clock.remaining() > 0 &&
+    !overlay?.isVisible() &&
+    !approvedQuit;
+  if (!visible) {
+    statusHandle.hide();
+    return;
+  }
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const desired = {
+    x: display.bounds.x + display.bounds.width - 64,
+    y: display.bounds.y,
+    width: 64,
+    height: 64,
+  };
+  const current = statusHandle.getBounds();
+  if (current.x !== desired.x || current.y !== desired.y)
+    statusHandle.setBounds(desired);
+  if (!statusHandle.isVisible()) statusHandle.showInactive();
+}
 function openOverlay() {
   if (!token) return;
   if (!overlay) {
@@ -395,6 +448,7 @@ function openOverlay() {
       if (!approvedQuit) {
         e.preventDefault();
         overlay?.hide();
+        syncStatusHandle();
       }
     });
   }
@@ -408,6 +462,7 @@ function openOverlay() {
     height: Math.min(820, wa.height),
   });
   overlay.setAlwaysOnTop(true, "screen-saver");
+  statusHandle?.hide();
   overlay.show();
   overlay.focus();
   pushState();
@@ -476,9 +531,11 @@ async function start() {
   main.on("leave-full-screen", () => {
     if (!approvedQuit) main?.setFullScreen(true);
   });
+  await createStatusHandle();
   void poll();
   let hoverStart = 0;
   setInterval(() => {
+    syncStatusHandle();
     if (!token || overlay?.isVisible()) return;
     const cursor = screen.getCursorScreenPoint(),
       b = screen.getDisplayNearestPoint(cursor).bounds;
@@ -524,6 +581,15 @@ async function start() {
   }, 500).unref();
 }
 ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
+  if (event.sender === statusHandle?.webContents) {
+    if (
+      event.senderFrame !== event.sender.mainFrame ||
+      action !== "openOverlay"
+    )
+      throw Error("허용하지 않은 동작입니다.");
+    if (token && deviceState?.session && clock.remaining() > 0) openOverlay();
+    return true;
+  }
   if (
     ![main?.webContents, overlay?.webContents].includes(event.sender) ||
     event.senderFrame !== event.sender.mainFrame
@@ -579,6 +645,7 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
   }
   if (action === "closeOverlay") {
     overlay?.hide();
+    syncStatusHandle();
     return true;
   }
   if (action === "recoverExit") {

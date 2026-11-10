@@ -1,6 +1,6 @@
 # PC CLUB 1.1 · Supabase 축제 PC방
 
-**[설치 프로그램 ZIP](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.0/PC-Club-Installers.zip)** · **[SQL·Edge Function 설정 파일](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.0/Supabase-Setup.zip)**
+**[설치 프로그램 ZIP](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.1/PC-Club-Installers.zip)** · **[SQL·Edge Function 설정 파일](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.1/Supabase-Setup.zip)**
 
 **[폰 / 관리자 웹](https://minchan012309-spec.github.io/kiosk/#/admin)** · **[키오스크 웹](https://minchan012309-spec.github.io/kiosk/#/kiosk)**
 
@@ -32,6 +32,8 @@ Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](
 
 ### 무설치형 Windows ZIP
 
-[관리자·키오스크용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.0/PC-Club-Admin-Portable.zip) · [학생 PC용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.0/PC-Club-Station-Portable.zip)
+[관리자·키오스크용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.1/PC-Club-Admin-Portable.zip) · [학생 PC용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.1.1/PC-Club-Station-Portable.zip)
 
 전체 압축 해제 후 폴더 안 EXE를 실행하세요. [무설치 사용 안내](docs/PORTABLE-KO.md). 설정은 기존과 같이 Windows 사용자 AppData에 저장됩니다.
+
+이용 중 오른쪽 위 `← 내 PC` 버튼을 누르면 시간·머니·주문 상태창이 열립니다. 일부 게임의 독점 전체화면에서는 가려질 수 있으므로 테두리 없는 전체화면을 사용하세요.

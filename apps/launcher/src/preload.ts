@@ -20,6 +20,7 @@ const allowed = new Set([
   "exitPassword",
   "recoverExit",
   "closeOverlay",
+  "openOverlay",
   "quitUnregistered",
 ]);
 contextBridge.exposeInMainWorld("cafe", {
