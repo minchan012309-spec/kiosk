@@ -1,5 +1,5 @@
 name: Publish PC Club ZIP
-# Publish installed and unzip-and-run Windows distributions together.
+# Publish the floating status button in installed and portable Windows packages.
 on:
   push:
     branches: [main]
@@ -58,9 +58,9 @@ jobs:
       - name: Publish cloud release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
+          tag_name: v1.1.1
           target_commitish: ${{ github.sha }}
-          name: PC Club 1.1.0 · Cloud
+          name: PC Club 1.1.1 · Cloud
           fail_on_unmatched_files: true
           files: |
             release/PC-Club-Installers.zip
@@ -73,6 +73,9 @@ jobs:
             release/Supabase-Setup/club-admin.ts
             release/Supabase-Setup/SETUP-KO.md
           body: |
+            게임·프로그램 위 오른쪽 상단 화살표 버튼으로 시간·머니·주문 상태창을 열 수 있습니다.
+            독점 전체화면 게임은 창 모드 또는 테두리 없는 전체화면을 사용하세요.
+
             Supabase 클라우드 버전입니다. 로컬 서버는 실행하지 않습니다.
 
             1. Supabase-Setup.zip의 SQL·최초 소유자·Edge Function 설정을 먼저 완료하세요.
