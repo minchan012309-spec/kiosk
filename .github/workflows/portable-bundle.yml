@@ -42,9 +42,7 @@ jobs:
                               raise ValueError(f'Missing packaged file: {required}')
               output.write('docs/PORTABLE-KO.md', '사용방법.md')
           PY
-      - name: Add combined ZIP to existing release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.2.0
-          fail_on_unmatched_files: true
-          files: .data/bundle/PC-Club-Portable.zip
+      - name: Upload combined ZIP without editing release metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload v1.2.0 .data/bundle/PC-Club-Portable.zip --repo "$GITHUB_REPOSITORY" --clobber
