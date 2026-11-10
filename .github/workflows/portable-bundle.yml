@@ -1,0 +1,50 @@
+name: Bundle Existing Portable ZIPs
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/portable-bundle.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download already published Windows packages
+        run: |
+          mkdir -p .data/bundle
+          curl --fail --location --retry 3 https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Station-Portable.zip --output .data/bundle/Station.zip
+          curl --fail --location --retry 3 https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Admin-Portable.zip --output .data/bundle/Server.zip
+      - name: Combine programs into one ZIP
+        run: |
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import zipfile
+          root = Path('.data/bundle')
+          with zipfile.ZipFile(root/'PC-Club-Portable.zip', 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as output:
+              for role, prefix in [('Station', 'PC-Club-Station-Portable'), ('Server', 'PC-Club-Admin-Portable')]:
+                  with zipfile.ZipFile(root/f'{role}.zip') as source:
+                      names = set()
+                      for item in source.infolist():
+                          path = PurePosixPath(item.filename.replace('\\', '/'))
+                          if path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] != prefix:
+                              raise ValueError(f'Unexpected archive entry: {item.filename}')
+                          if item.is_dir() or len(path.parts) < 2:
+                              continue
+                          name = '/'.join((role, *path.parts[1:]))
+                          output.writestr(name, source.read(item))
+                          names.add(name)
+                      exe = 'PC Club Station.exe' if role == 'Station' else 'PC Club Admin.exe'
+                      for required in [f'{role}/{exe}', f'{role}/resources/app.asar', f'{role}/resources/app.asar.unpacked/dist/desktop/pcclub-keyguard.exe']:
+                          if required not in names:
+                              raise ValueError(f'Missing packaged file: {required}')
+              output.write('docs/PORTABLE-KO.md', '사용방법.md')
+          PY
+      - name: Add combined ZIP to existing release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.2.0
+          fail_on_unmatched_files: true
+          files: .data/bundle/PC-Club-Portable.zip
