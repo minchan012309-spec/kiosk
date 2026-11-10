@@ -1,5 +1,5 @@
 name: Publish Cloud Admin Web
-# Pages has been enabled by the repository owner; retry deployment.
+# Redeploy the compiled React app after the reported README page overwrite.
 on:
   push:
     branches: [main]
