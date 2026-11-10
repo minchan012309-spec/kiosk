@@ -32,6 +32,9 @@ export class GameController {
     private spawn: (path: string, args: string[]) => Promise<number>,
     private terminate: (pid: number) => Promise<void>,
   ) {}
+  get running() {
+    return this.pid !== undefined;
+  }
   start(game: { executable: string; args: string[] }) {
     return this.enqueue(async () => {
       await this.stopOwned();

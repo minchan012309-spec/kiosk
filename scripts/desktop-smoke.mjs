@@ -6,7 +6,13 @@ const data = mkdtempSync(join(tmpdir(), "pc-club-desktop-"));
 let desktop;
 try {
   desktop = await electron.launch({
-    args: ["--no-sandbox", resolve("dist/desktop/server.cjs")],
+    executablePath: process.env.CAFE_PACKAGED_EXECUTABLE || undefined,
+    args: [
+      "--no-sandbox",
+      ...(process.env.CAFE_PACKAGED_EXECUTABLE
+        ? []
+        : [resolve("dist/desktop/server.cjs")]),
+    ],
     env: {
       ...process.env,
       DISPLAY: process.env.DISPLAY || ":99",
@@ -15,12 +21,10 @@ try {
     },
     timeout: 20000,
   });
-  console.log("electron launched");
-  desktop.process().stderr.on("data", (d) => console.error(String(d)));
+  if (process.env.CAFE_PACKAGED_EXECUTABLE)
+    expect(await desktop.evaluate(({ app }) => app.isPackaged)).toBe(true);
   const page = await desktop.firstWindow();
-  console.log("window:", page.url());
   page.on("pageerror", (e) => console.error("renderer:", e.message));
-  console.log("loaded", await page.title());
   await expect(
     page.getByRole("heading", { name: "우리 축제 PC방 만들기" }),
   ).toBeVisible();
@@ -41,6 +45,12 @@ try {
     kiosk.getByRole("heading", { name: /오늘의 플레이/ }),
   ).toBeVisible();
   expect(await kiosk.evaluate(() => window.cafe)).toBeUndefined();
+  expect(
+    await kiosk.evaluate(
+      async () => (await fetch("/api/%61dmin/state")).status,
+    ),
+  ).toBe(401);
+  await kiosk.evaluate(() => document.fonts.ready);
   await page.screenshot({
     path: "release/admin-screenshot.png",
     fullPage: true,

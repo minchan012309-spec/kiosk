@@ -409,12 +409,19 @@ export class Domain {
   saveProduct(input: unknown) {
     const b = productSchema.parse(input);
     return this.tx((s) => {
+      const old = s.products.find((p) => p.id === b.id);
+      if (old)
+        requireThat(
+          b.version === (old.version || 1),
+          "상품 또는 재고가 변경됐습니다. 최신 내용을 다시 열어 수정하세요.",
+        );
       const item = {
         ...b,
         id: b.id || randomUUID(),
         enabled: b.enabled ?? true,
+        version: old ? (old.version || 1) + 1 : 1,
       };
-      const i = s.products.findIndex((x) => x.id === item.id);
+      const i = s.products.findIndex((p) => p.id === item.id);
       if (i < 0) s.products.push(item);
       else s.products[i] = item;
       this.audit(s, "product.save", item.id);
@@ -455,6 +462,7 @@ export class Domain {
         requireThat(r.money >= p.price, "머니가 부족합니다.");
         r.money -= p.price;
         p.stock--;
+        p.version = (p.version || 1) + 1;
         const o: Order = {
           id: randomUUID(),
           sessionId: r.id,
@@ -495,7 +503,10 @@ export class Domain {
           const r = s.sessions.find((r) => r.id === o.sessionId)!;
           r.money += o.price;
           const p = s.products.find((p) => p.id === o.productId);
-          if (p) p.stock++;
+          if (p) {
+            p.stock++;
+            p.version = (p.version || 1) + 1;
+          }
           o.status = "cancelled";
           this.audit(s, "order.refunded", id, String(o.price));
         }
@@ -548,15 +559,19 @@ export class Domain {
       return { ok: true };
     });
   }
-  endDeviceSession(token: string) {
+  endDeviceSession(token: string, sessionId: string) {
     return this.tx((s) => {
       const d = this.device(s, token);
-      for (const r of s.sessions)
-        if (r.seatId === d.seatId && r.status !== "ended") {
-          r.status = "ended";
-          r.codeHash = "";
-        }
-      this.audit(s, "device.session.ended", d.id);
+      const r = s.sessions.find((r) => r.id === sessionId);
+      requireThat(r, "세션이 없습니다.", 404);
+      requireThat(
+        r.seatId === d.seatId,
+        "다른 PC의 세션을 종료할 수 없습니다.",
+        403,
+      );
+      r.status = "ended";
+      r.codeHash = "";
+      this.audit(s, "device.session.ended", r.id);
     });
   }
   requestExit(token: string) {
@@ -663,6 +678,16 @@ export class Domain {
         }
       for (const [k] of Object.entries(s.retries))
         if (k.startsWith("reserve:")) delete s.retries[k];
+      const ended = new Set(
+        s.sessions.filter((r) => r.status === "ended").map((r) => r.id),
+      );
+      for (const entry of Object.values(s.retries)) {
+        const result = entry.result as any;
+        if (result && typeof result === "object" && ended.has(result.id)) {
+          if ("name" in result) result.name = "삭제됨";
+          if ("studentId" in result) result.studentId = "";
+        }
+      }
       this.audit(s, "privacy.purged", "ended-sessions");
       return { ok: true };
     });

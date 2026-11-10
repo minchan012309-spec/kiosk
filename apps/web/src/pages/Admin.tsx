@@ -1,3 +1,4 @@
+import { PendingOperations } from "../../../../packages/shared/src/operations";
 import { useEffect, useRef, useState } from "react";
 import type {
   AdminState,
@@ -38,6 +39,7 @@ export function Admin() {
   const [editing, setEditing] = useState<any>(null);
   const [adjust, setAdjust] = useState<string>();
   const receivedAt = useRef(performance.now());
+  const pendingOperations = useRef(new PendingOperations(sessionStorage));
   const refresh = async () => {
     try {
       const next = await api<AdminState>("/admin/state");
@@ -92,7 +94,13 @@ export function Admin() {
     }
   };
   const mutate = (path: string, data: any) =>
-    run(() => api(path, data, crypto.randomUUID()));
+    run(() =>
+      /\/sessions\/.*\/adjust$|\/orders\//.test(path)
+        ? pendingOperations.current.run(path, data, (key) =>
+            api(path, data, key),
+          )
+        : api(path, data, crypto.randomUUID()),
+    );
   const login = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const data = new FormData(e.currentTarget);

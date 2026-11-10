@@ -102,7 +102,10 @@ export async function buildApp(opts: {
         403,
       );
     }
-    if (r.url.startsWith("/api/admin/") && r.url !== "/api/admin/login")
+    if (
+      r.routeOptions.url?.startsWith("/api/admin/") &&
+      r.routeOptions.url !== "/api/admin/login"
+    )
       d.admin(r.cookies.admin || "");
   });
   app.addHook("onResponse", async (r) => {
@@ -250,7 +253,10 @@ export async function buildApp(opts: {
     );
   });
   app.post("/api/device/end", async (r) => {
-    d.endDeviceSession(token(r));
+    d.endDeviceSession(
+      token(r),
+      z.object({ sessionId: z.string().uuid() }).parse(b(r)).sessionId,
+    );
     return { ok: true };
   });
   app.post("/api/device/commands/:id/ack", async (r) => {

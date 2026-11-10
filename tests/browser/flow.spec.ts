@@ -60,6 +60,22 @@ test("festival kiosk, device purchase and administrator approval work together",
   const beforeTime = await timer.innerText();
   await page.clock.runFor(2100);
   expect(await timer.innerText()).not.toBe(beforeTime);
+  let dropAdjustmentResponse = true;
+  await page.route("**/api/admin/sessions/*/adjust", async (route) => {
+    const response = await route.fetch();
+    if (dropAdjustmentResponse) {
+      dropAdjustmentResponse = false;
+      await route.abort("failed");
+    } else await route.fulfill({ response });
+  });
+  await page.getByRole("button", { name: "시간 / 머니", exact: true }).click();
+  await page.getByLabel("머니 변경", { exact: true }).fill("100");
+  await page.getByRole("button", { name: "변경 적용", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByRole("button", { name: "변경 적용", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "시간 / 머니 조정" }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "주문 관리" }).click();
   await expect(page.getByText("생수", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "준비 시작" }).click();
@@ -75,7 +91,7 @@ test("festival kiosk, device purchase and administrator approval work together",
     await request.get("/api/device/state", { headers: dh })
   ).json();
   expect(ds.commands[0].type).toBe("exit");
-  expect(ds.session.money).toBe(2500);
+  expect(ds.session.money).toBe(2600);
   await page.goto("/kiosk");
   await expect(page.getByText("10101")).toHaveCount(0);
 });

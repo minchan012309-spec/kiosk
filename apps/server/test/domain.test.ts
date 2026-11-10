@@ -110,3 +110,37 @@ describe("festival accounting", () => {
     expect(f.d.adminState().audit.length).toBeGreaterThan(0);
   });
 });
+it("purges copied personal data from cached adjustment and extension responses", () => {
+  const f = fixture();
+  const r = f.reserve();
+  f.d.activate(f.device.token, r.code);
+  f.d.adjust(r.id, 60, 100, "adjust");
+  const ext = f.d.saveExtension({ name: "연장", seconds: 60, price: 100 });
+  f.d.extend(f.device.token, ext.id, "extend");
+  f.d.endSession(r.id);
+  f.d.purgePersonalData();
+  const serialized = String(
+    (f.db.prepare("SELECT data FROM state WHERE id=1").get() as any).data,
+  );
+  expect(serialized).not.toContain("10101");
+});
+it("rejects stale catalog edits rather than restoring already sold stock", () => {
+  const f = fixture();
+  const r = f.reserve();
+  f.d.activate(f.device.token, r.code);
+  const opened = f.d.saveProduct({ name: "물", price: 500, stock: 20 });
+  f.d.purchase(f.device.token, opened.id, "water");
+  expect(() => f.d.saveProduct({ ...opened, name: "시원한 물" })).toThrow();
+  expect(f.d.publicState().products[0].stock).toBe(19);
+});
+it("reconciles only a specifically ended session and preserves a later occupant", () => {
+  const f = fixture();
+  const r = f.reserve();
+  f.d.activate(f.device.token, r.code);
+  f.d.endDeviceSession(f.device.token, r.id);
+  f.d.heartbeat(f.device.token);
+  const next = f.reserve("next");
+  f.d.activate(f.device.token, next.code);
+  f.d.endDeviceSession(f.device.token, r.id);
+  expect(f.d.deviceState(f.device.token).session?.id).toBe(next.id);
+});

@@ -161,14 +161,42 @@ try {
     });
   });
   station = undefined;
-  await forceClose(server);
-  server = undefined;
   station = await launch("station", cd);
   page = await station.firstWindow();
   await expect(
-    page.getByText("서버 연결을 기다리고 있어요. 지금은 로그인할 수 없습니다."),
-  ).toBeVisible({ timeout: 15000 });
-  await page.getByText("관리자 · 프로그램 종료", { exact: true }).click();
+    page.getByRole("heading", { name: "플레이할 준비됐나요?" }),
+  ).toBeVisible();
+  const secondReservation = await admin.evaluate(
+    async (seatId) =>
+      (
+        await fetch("/api/reservations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            seatId,
+            name: "두번째 학생",
+            studentId: "20202",
+          }),
+        })
+      ).json(),
+    data.seat.id,
+  );
+  await page
+    .getByLabel("로그인 번호", { exact: true })
+    .fill(secondReservation.code);
+  await page.getByRole("button", { name: "입장하기 ↗" }).click();
+  await expect(
+    page.getByRole("heading", { name: "오늘은 어떤 게임?" }),
+  ).toBeVisible();
+  await forceClose(server);
+  server = undefined;
+  await expect(page.getByText(/연결 끊김 · 구매 불가/)).toBeVisible({
+    timeout: 15000,
+  });
+  await page.getByRole("button", { name: "종료 승인", exact: true }).click();
   await page.getByText("연결 장애 시 비상 종료", { exact: true }).click();
   await page
     .getByLabel("운영자 비상 종료 코드", { exact: true })
@@ -186,8 +214,26 @@ try {
   await page.getByRole("button", { name: "비상 종료", exact: true }).click();
   await closed;
   station = undefined;
+  server = await launch("server", sd);
+  const restoredAdmin = await server.firstWindow();
+  await expect(
+    restoredAdmin.getByRole("heading", { name: "운영 현황" }),
+  ).toBeVisible();
+  station = await launch("station", cd);
+  page = await station.firstWindow();
+  await expect(
+    page.getByRole("heading", { name: "플레이할 준비됐나요?" }),
+  ).toBeVisible();
+  const ended = await restoredAdmin.evaluate(
+    async (id) =>
+      (await (await fetch("/api/admin/state")).json()).sessions.find(
+        (s) => s.id === id,
+      )?.status,
+    secondReservation.id,
+  );
+  expect(ended).toBe("ended");
   console.log(
-    "PASS station: connection import, TLS, stored credentials, login, snack purchase, extension, remote approval, offline recovery exit. Linux libsecret integration does not validate Windows DPAPI or game execution.",
+    "PASS station: connection import, TLS, stored credentials, login, snack purchase, extension, remote approval, offline recovery exit and session-end reconciliation. Linux libsecret integration does not validate Windows DPAPI or game execution.",
   );
 } catch (e) {
   console.error(e);

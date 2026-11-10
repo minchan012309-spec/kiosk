@@ -38,6 +38,7 @@ for (const role of ["server", "station"]) {
         readFileSync("node_modules/electron/package.json", "utf8"),
       ).version,
       asar: true,
+      compression: "store",
       directories: { app: dir, output: resolve("release/" + role) },
       files: ["dist/**/*", "package.json"],
       npmRebuild: false,

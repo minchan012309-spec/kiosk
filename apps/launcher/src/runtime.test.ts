@@ -47,3 +47,20 @@ it("switches only after owned process stopped and propagates termination failure
   );
   expect(calls).not.toContain("start:C.exe:");
 });
+it("retries an outstanding stop after the server session disappears", async () => {
+  let attempts = 0;
+  const c = new GameController(
+    async () => 123,
+    async () => {
+      attempts++;
+      if (attempts === 1) throw Error("temporarily denied");
+    },
+  );
+  await c.start({ executable: "A.exe", args: [] });
+  expect(c.running).toBe(true);
+  await expect(c.stop()).rejects.toThrow();
+  expect(c.running).toBe(true);
+  await c.stop();
+  expect(c.running).toBe(false);
+  expect(attempts).toBe(2);
+});

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { PendingOperations } from "../../../../packages/shared/src/operations";
+import { useEffect, useRef, useState } from "react";
 import type { DeviceState } from "../../../../packages/shared/src/contracts";
 import { money, duration } from "../api";
 import { Brand, ErrorMessage } from "../App";
@@ -21,11 +22,18 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
   const [recovery, setRecovery] = useState("");
   const [notice, setNotice] = useState("");
   const [password, setPassword] = useState("");
+  const pendingOperations = useRef(new PendingOperations(sessionStorage));
   const call = async (action: string, payload?: any) => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
+      if (action === "purchase" || action === "extend")
+        return await pendingOperations.current.run(
+          (state?.session?.id || "") + ":" + action,
+          payload,
+          (key) => window.cafe!.invoke(action, { ...payload, key }),
+        );
       return await window.cafe!.invoke(action, payload);
     } catch (e) {
       setError((e as Error).message);
@@ -403,7 +411,6 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                   )
                     void call("purchase", {
                       productId: p.id,
-                      key: crypto.randomUUID(),
                     }).then((r) => {
                       if (r)
                         setNotice(
@@ -463,7 +470,6 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                   )
                     void call("extend", {
                       extensionId: e.id,
-                      key: crypto.randomUUID(),
                     }).then((r) => {
                       if (r)
                         setNotice("시간이 연장됐어요. 즐겁게 플레이하세요!");

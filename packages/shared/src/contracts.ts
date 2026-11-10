@@ -11,6 +11,7 @@ export const reservationSchema = z
 export const productSchema = z
   .object({
     id: text.optional(),
+    version: z.number().int().positive().optional(),
     name: text,
     price: integer,
     stock: integer,
@@ -46,6 +47,7 @@ export const settingsSchema = z
   })
   .strict();
 export type Product = z.infer<typeof productSchema> & {
+  version: number;
   id: string;
   enabled: boolean;
 };

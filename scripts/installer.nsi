@@ -4,7 +4,7 @@ Unicode true
 Name "@PRODUCT@"
 InstallDir "$LOCALAPPDATA\Programs\@PRODUCT@"
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
+SetCompressor /SOLID zlib
 ShowInstDetails show
 ShowUninstDetails show
 !define /redef MUI_ICON "@ICON@"

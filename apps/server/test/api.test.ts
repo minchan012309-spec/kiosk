@@ -157,3 +157,28 @@ it("rejects malformed and negative quantities and foreign device credentials", a
     ).statusCode,
   ).toBe(401);
 });
+it("authenticates canonical admin routes even when URL segments are encoded", async () => {
+  const a = await fixture();
+  await admin(a);
+  const variants = ["/api/%61dmin/state", "/api/admin/%73tate"];
+  for (const url of variants)
+    expect((await a.inject(url)).statusCode).toBe(401);
+  expect(
+    (
+      await a.inject({
+        method: "POST",
+        url: "/api/%61dmin/seats",
+        payload: { name: "untrusted" },
+      })
+    ).statusCode,
+  ).toBe(401);
+  expect(
+    (
+      await a.inject({
+        method: "POST",
+        url: "/api/%61dmin/personal-data/purge",
+        payload: {},
+      })
+    ).statusCode,
+  ).toBe(401);
+});

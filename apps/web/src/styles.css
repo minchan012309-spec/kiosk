@@ -1,3 +1,17 @@
+@font-face {
+  font-family: "RoundedFixedsys";
+  src: url("/fonts/DungGeunMo.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Yangjin";
+  src: url("/fonts/yangjin.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
 :root {
   font-family: Inter, "Segoe UI", "Malgun Gothic", sans-serif;
   color: #eaf0f4;
@@ -1126,5 +1140,526 @@ td {
   .kiosk footer {
     letter-spacing: 1px;
     font-size: 8px;
+  }
+}
+
+/* Festival light theme: white surfaces, high-contrast type, volt accents. */
+:root {
+  color: #182015;
+  background: #f6f8f2;
+  --bg: #f6f8f2;
+  --panel: #ffffff;
+  --line: #dfe5d8;
+  --muted: #6b7562;
+  --accent: #ceff00;
+  --accent-dark: #26370a;
+  color-scheme: light;
+}
+body {
+  background: #f6f8f2;
+}
+button {
+  background: #f0f4e9;
+  border-color: #d4ddc8;
+  color: #29351f;
+}
+button:hover:not(:disabled) {
+  background: #e6edda;
+}
+button.primary {
+  color: #1c2905;
+}
+button.primary:hover:not(:disabled) {
+  background: #ddff57;
+}
+button.danger {
+  background: #fff0f2;
+  border-color: #efc3cb;
+  color: #a33048;
+}
+.panel {
+  box-shadow: 0 5px 25px #33401a05;
+}
+input,
+textarea {
+  background: #fbfcf8;
+  color: #20291a;
+  border-color: #d5dfca;
+}
+input::placeholder {
+  color: #929b87;
+}
+input:focus,
+textarea:focus {
+  border-color: #86ab00;
+  box-shadow: 0 0 0 3px #ceff0020;
+}
+.eyebrow {
+  color: #526d0f;
+}
+.brand-icon {
+  background: #ceff00;
+  color: #20300b;
+}
+.badge {
+  background: #fff;
+  border-color: #dfe7d4;
+  color: #62734c;
+}
+.badge i,
+.dot {
+  background: #9fc900;
+  box-shadow: 0 0 12px #ceff0040;
+}
+.green-text {
+  color: #4d6c00;
+}
+.danger-text {
+  color: #b4304d;
+}
+.error {
+  background: #fff0f3;
+  border-color: #eeb7c4;
+  color: #98334a;
+}
+.notice {
+  background: #f0fad8;
+  color: #40581b;
+  border: 1px solid #d7e8b6;
+}
+.tag {
+  background: #f0f4e9;
+  border-color: #d7dfcc;
+  color: #687755;
+}
+.tag.green {
+  background: #efffd1;
+  border-color: #cee995;
+  color: #476000;
+}
+.auth-screen {
+  background:
+    radial-gradient(ellipse at 50% 15%, #e9ffbd70, transparent 65%), #fcfdf9;
+}
+.recovery-code {
+  background: #f2f7e9;
+  color: #304810;
+}
+.chosen strong {
+  color: #354713;
+}
+.grant {
+  background: #f3f7e9;
+}
+.grant strong {
+  color: #263719;
+}
+.seat {
+  background: #fff;
+  border-color: #dce5d2;
+  box-shadow: 0 3px 12px #213a0804;
+}
+.seat .monitor {
+  color: #9aa68b;
+}
+.seat.available .monitor {
+  color: #83a600;
+}
+.seat.selected {
+  background: #f3ffc8;
+  border-color: #9ec700;
+  box-shadow: 0 0 0 3px #ceff002a;
+}
+.legend i {
+  background: #bec7b2;
+}
+.legend i.occupied {
+  background: #a4a0cb;
+}
+.legend i.available {
+  box-shadow: 0 0 0 1px #a5bf48;
+}
+.screen-line {
+  border-color: #d7e0ca;
+  color: #8a9877;
+}
+.success-screen {
+  background: #fcfdf8;
+}
+.ticket {
+  background: #f2ffd6;
+  border-color: #b9cf83;
+}
+.ticket strong {
+  color: #2d400c;
+}
+.ticket small {
+  color: #6b8054;
+}
+.sidebar {
+  background: #fff;
+}
+.sidebar > .eyebrow {
+  color: #8a987b;
+}
+.sidebar nav button {
+  color: #728060;
+}
+.sidebar nav button.active {
+  background: #f0ffcf;
+  color: #253e08;
+  box-shadow: inset 3px 0 #b5e000;
+}
+.kiosk-link {
+  color: #536f2c;
+}
+.stat:first-child strong {
+  color: #2a4012;
+}
+th {
+  background: #f4f7ed;
+}
+td {
+  border-color: #e3e9db;
+}
+.order-icon {
+  background: #f1fadf;
+  color: #678a15;
+}
+.balance-bar {
+  background: linear-gradient(110deg, #f0ffcb, #fff 80%);
+  border-color: #d7e5bf;
+}
+.balance-bar strong {
+  color: #24360f;
+}
+.launcher-tabs button.active {
+  color: #314714;
+  border-color: #a2cb00;
+}
+.game-card {
+  background: #fff;
+  border-color: #dce5d0;
+  box-shadow: 0 6px 22px #26381308;
+}
+.game-card:hover:not(:disabled) {
+  background: #fff;
+  border-color: #a3c255;
+  box-shadow: 0 9px 28px #40591d14;
+}
+.game-art {
+  color: #4d6d18;
+  background:
+    radial-gradient(ellipse at 70% 0%, #ceff0080, transparent),
+    linear-gradient(135deg, #e5f8bf, #f8fce9);
+  text-shadow: 0 0 40px #ceff00;
+}
+.game-1 .game-art {
+  color: #67568e;
+  background:
+    radial-gradient(ellipse at 70% 0%, #c8bbef80, transparent),
+    linear-gradient(135deg, #ede5ff, #f9f7ff);
+}
+.game-2 .game-art {
+  color: #946839;
+  background:
+    radial-gradient(ellipse at 70% 0%, #ffcf8e80, transparent),
+    linear-gradient(135deg, #fff0d7, #fff9ef);
+}
+.game-3 .game-art {
+  color: #377c79;
+  background:
+    radial-gradient(ellipse at 70% 0%, #a4ebd280, transparent),
+    linear-gradient(135deg, #dff8ec, #f2fcfa);
+}
+.game-content > small {
+  color: #637e1a;
+}
+.game-content b {
+  color: #546e14;
+}
+.snack-art {
+  background: #f0f6df;
+  color: #68871b;
+}
+.time-price {
+  color: #3a5310;
+}
+.overlay-shell {
+  background: #f8faf3;
+}
+.modal-backdrop {
+  background: #24321866;
+}
+label {
+  color: #536249;
+}
+.setup-steps li {
+  color: #405333;
+}
+.registration .step {
+  color: #5d7710;
+}
+.kiosk footer {
+  color: #7f8e6c;
+}
+
+/* 1990s PC club: local pixel fonts and square, tactile desktop windows. */
+:root {
+  font-family: "RoundedFixedsys", "Malgun Gothic", monospace;
+  font-size: 17px;
+}
+h1,
+h2,
+h3,
+.brand {
+  font-family: "Yangjin", "RoundedFixedsys", sans-serif;
+  font-weight: 400;
+}
+h1 {
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+h2 {
+  line-height: 1.6;
+  font-size: 18px;
+}
+label {
+  font-size: 15px;
+}
+input,
+textarea {
+  font-size: 17px;
+  border-radius: 0;
+  border: 2px solid #b9c6a6;
+  box-shadow: inset 2px 2px 0 #edf0e6;
+}
+button {
+  font-size: 15px;
+  border: 2px solid #39452d;
+  border-radius: 0;
+  box-shadow: 2px 2px 0 #39452d;
+}
+button:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+button.primary {
+  border-color: #354518;
+  font-weight: 400;
+}
+button.subtle {
+  box-shadow: none;
+  border: 0;
+}
+.panel {
+  border: 2px solid #39452d;
+  border-radius: 0;
+  box-shadow: 5px 5px 0 #dbe4c9;
+}
+.badge,
+.tag {
+  border-radius: 0;
+  font-size: 13px;
+  border-width: 1px;
+}
+.eyebrow,
+.step {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 1px;
+}
+.brand {
+  letter-spacing: 1px;
+  font-size: 21px;
+}
+.brand-icon {
+  border-radius: 0;
+  border: 2px solid #253b0a;
+  box-shadow: 3px 3px 0 #dce6bd;
+  font-family: "RoundedFixedsys", monospace;
+  font-style: normal;
+}
+.brand small {
+  font-family: "RoundedFixedsys", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.kiosk header {
+  border-bottom: 2px dashed #9cac83;
+}
+.kiosk h1 {
+  font-size: 43px;
+  letter-spacing: 0;
+  line-height: 1.6;
+}
+.kiosk h1 em {
+  color: #526b00;
+  text-shadow: 3px 3px 0 #ceff00;
+}
+.kiosk-layout {
+  padding-top: 40px;
+}
+.muted {
+  font-size: 16px;
+  line-height: 1.6;
+}
+.fine {
+  font-size: 13px;
+}
+.legend {
+  font-size: 13px;
+}
+.legend i,
+.dot,
+.badge i {
+  border-radius: 0;
+}
+.seat {
+  border-radius: 0;
+  border: 2px solid #bec9ac;
+  box-shadow: 3px 3px 0 #e1e7d5;
+}
+.seat strong {
+  font-size: 17px;
+  font-weight: 400;
+}
+.seat small {
+  font-size: 12px;
+}
+.seat.selected {
+  border-color: #354518;
+  box-shadow: 4px 4px 0 #ceff00;
+}
+.chosen,
+.registration > small {
+  font-size: 13px;
+}
+.grant,
+.error,
+.notice,
+.recovery-code,
+.ticket {
+  border-radius: 0;
+}
+.grant > span {
+  font-size: 12px;
+}
+.grant strong {
+  font-weight: 400;
+  font-size: 28px;
+}
+.screen-line {
+  font-size: 12px;
+  letter-spacing: 1px;
+  border-top: 4px double #819463;
+}
+.kiosk footer {
+  font-size: 11px;
+  letter-spacing: 1px;
+  border-top: 2px dashed #b7c49e;
+}
+.mono,
+.code-input,
+.ticket strong,
+.recovery-code {
+  font-family: "RoundedFixedsys", monospace;
+}
+.success-mark {
+  border-radius: 0;
+  box-shadow: 4px 4px 0 #263a0a;
+}
+.sidebar {
+  border-right: 2px solid #9eae86;
+}
+.sidebar nav button {
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 16px;
+}
+.sidebar nav button.active {
+  background: #ceff00;
+  box-shadow: 3px 3px 0 #344718;
+}
+.sidebar > .eyebrow,
+.page-heading .eyebrow {
+  font-size: 12px;
+}
+.stat > span {
+  font-size: 14px;
+}
+.stat strong {
+  font-family: "RoundedFixedsys", monospace;
+  font-weight: 400;
+}
+th {
+  font-size: 14px;
+}
+td {
+  font-size: 15px;
+}
+.list-row small {
+  font-size: 13px;
+}
+.actions button {
+  font-size: 14px;
+}
+.balance-bar {
+  border-radius: 0;
+  border: 2px solid #39452d;
+  box-shadow: 4px 4px 0 #ceff00;
+}
+.balance-bar strong {
+  font-weight: 400;
+  font-size: 34px;
+}
+.balance-bar > span {
+  font-size: 14px;
+}
+.launcher-tabs button {
+  box-shadow: none;
+  font-size: 16px;
+}
+.launcher-tabs button.active {
+  background: #ceff00;
+  border-bottom: 2px solid #39452d;
+}
+.game-card {
+  border-radius: 0;
+  border: 2px solid #39452d;
+  box-shadow: 4px 4px 0 #d7e3be;
+}
+.game-content > strong {
+  font-family: "Yangjin", sans-serif;
+  font-weight: 400;
+  font-size: 20px;
+}
+.game-content > small,
+.game-content > span {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.snack-art,
+.order-icon {
+  border-radius: 0;
+}
+.time-price {
+  font-family: "RoundedFixedsys", monospace;
+}
+.overlay-shell .launcher-tabs button {
+  font-size: 14px;
+}
+@media (max-width: 780px) {
+  .kiosk h1 {
+    font-size: 34px;
+  }
+  .sidebar nav button {
+    font-size: 14px;
+  }
+  .panel {
+    padding: 20px;
+  }
+  .brand {
+    font-size: 18px;
   }
 }

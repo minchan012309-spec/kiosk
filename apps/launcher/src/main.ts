@@ -51,6 +51,9 @@ let connection: Connection | undefined,
 const clock = new SessionClock();
 const children = new Map<number, ChildProcess>();
 let stopping = false;
+let lastStopError = "",
+  lastSessionId: string | null = null,
+  pendingEnd: string | null = null;
 const root = app.isPackaged ? app.getAppPath() : resolve(".");
 const webRoot = join(root, "dist/web");
 const preload = join(root, "dist/desktop/preload.cjs");
@@ -67,6 +70,8 @@ function saveConfig() {
         ? safeStorage.encryptString(token).toString("base64")
         : undefined,
       recoveryHash,
+      lastSessionId,
+      pendingEnd,
       recoveryAttempts,
       recoveryBlockedUntil,
     }),
@@ -84,6 +89,8 @@ function loadConfig() {
     registered = true;
   }
   recoveryHash = v.recoveryHash || "";
+  lastSessionId = v.lastSessionId || null;
+  pendingEnd = v.pendingEnd || null;
   recoveryAttempts = v.recoveryAttempts || 0;
   recoveryBlockedUntil = v.recoveryBlockedUntil || 0;
   if (existsSync(durableFile))
@@ -158,7 +165,7 @@ function state() {
     online,
     remaining: deviceState?.session ? clock.remaining() : 0,
     currentGame,
-    error: lastError,
+    error: lastStopError || lastError,
   };
 }
 function pushState() {
@@ -170,9 +177,17 @@ async function request(path: string, body?: unknown, key?: string) {
   return requestApi(connection, path, body, token, key);
 }
 async function stopGame() {
-  await games.stop();
-  currentGame = undefined;
-  pushState();
+  try {
+    await games.stop();
+    lastStopError = "";
+    currentGame = undefined;
+    pushState();
+  } catch (e) {
+    lastStopError =
+      "게임 종료를 재시도하고 있습니다. 운영자에게 알려 주세요. " +
+      (e as Error).message;
+    throw e;
+  }
 }
 async function quitApproved() {
   await stopGame();
@@ -200,7 +215,7 @@ async function processCommands() {
       if (c.type === "shutdown") {
         if (process.platform !== "win32")
           throw Error("Windows 종료는 Windows PC에서만 지원합니다.");
-        await request("/device/end", {});
+        // The accepted shutdown acknowledgment already ended this session atomically.
         await new Promise<void>((yes, no) =>
           execFile(
             "shutdown.exe",
@@ -228,11 +243,21 @@ async function poll() {
   polling = true;
   try {
     await request("/device/heartbeat", {});
+    if (pendingEnd) {
+      await request("/device/end", { sessionId: pendingEnd });
+      pendingEnd = null;
+      lastSessionId = null;
+      saveConfig();
+    }
     const next: DeviceState = await request("/device/state");
     const hadSession = deviceState?.session?.id;
     online = true;
     lastError = "";
     deviceState = next;
+    if (lastSessionId !== (next.session?.id || null)) {
+      lastSessionId = next.session?.id || null;
+      saveConfig();
+    }
     if (next.session) clock.sync(next.serverNow, next.session.endAt!);
     if (hadSession && !next.session) {
       await stopGame();
@@ -263,7 +288,7 @@ function makeWindow(extra: Electron.BrowserWindowConstructorOptions = {}) {
   return new BrowserWindow({
     width: 1360,
     height: 900,
-    backgroundColor: "#0d1016",
+    backgroundColor: "#f6f8f2",
     autoHideMenuBar: true,
     ...extra,
     webPreferences: {
@@ -398,7 +423,11 @@ async function openStation() {
   }, 100).unref();
   setInterval(() => void poll(), 3000).unref();
   setInterval(() => {
-    if (deviceState?.session && clock.remaining() <= 0 && !stopping) {
+    if (
+      ((deviceState?.session && clock.remaining() <= 0) ||
+        (!deviceState?.session && games.running)) &&
+      !stopping
+    ) {
       stopping = true;
       void stopGame()
         .then(() => {
@@ -596,8 +625,19 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
       throw Error("비상 종료 코드가 다릅니다.");
     }
     await stopGame();
+    if (lastSessionId) {
+      pendingEnd = lastSessionId;
+      saveConfig();
+    }
     try {
-      if (online) await request("/device/end", {});
+      if (lastSessionId) {
+        if (online) {
+          await request("/device/end", { sessionId: pendingEnd });
+          pendingEnd = null;
+          lastSessionId = null;
+          saveConfig();
+        }
+      }
     } catch {}
     approvedQuit = true;
     app.quit();
@@ -610,6 +650,8 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
   }
   if (!online) throw Error("서버에 연결된 동안만 사용할 수 있습니다.");
   if (action === "login") {
+    if (pendingEnd || (!deviceState?.session && games.running))
+      throw Error("이전 이용 종료를 처리하고 있습니다. 잠시 기다려 주세요.");
     const p = z.object({ code: z.string().regex(/^\d{10}$/) }).parse(payload);
     const r = await request("/device/login", p);
     await poll();
