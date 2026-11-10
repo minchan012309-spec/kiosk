@@ -6,7 +6,7 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 for (const role of ["server", "station"]) {
   const dir = resolve(".data/package-" + role);
@@ -23,7 +23,10 @@ for (const role of ["server", "station"]) {
     .replaceAll("@PRODUCT@", product)
     .replaceAll("@ROLE@", role)
     .replaceAll("@VERSION@", version)
-    .replaceAll("@SOURCE@", resolve("release/" + role + "/win-unpacked"))
+    .replaceAll(
+      "@SOURCE_GLOB@",
+      join(resolve("release/" + role + "/win-unpacked"), "*"),
+    )
     .replaceAll("@ICON@", resolve("build/icon.ico"));
   writeFileSync(installer, script);
   writeFileSync(

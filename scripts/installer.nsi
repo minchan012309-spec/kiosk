@@ -37,7 +37,7 @@ FunctionEnd
 Section "Install"
  SetShellVarContext current
  SetOutPath "$INSTDIR"
- File /r "@SOURCE@/*"
+ File /r "@SOURCE_GLOB@"
  File /oname=pcclub.ico "@ICON@"
  FileOpen $0 "$INSTDIR\.pcclub-@ROLE@" w
  FileWrite $0 "@PRODUCT@ @VERSION@"

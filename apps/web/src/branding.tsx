@@ -57,12 +57,36 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [theme, branding]);
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key === "pcclub.theme") {
+        const next = event.newValue;
+        if (next === "light" || next === "dark" || next === "system")
+          setThemeState(next);
+      }
+      if (event.key === "pcclub.branding") {
+        try {
+          setBranding({ ...defaults, ...JSON.parse(event.newValue || "{}") });
+        } catch {}
+      }
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
   const setTheme = (v: Theme) => {
     localStorage.setItem("pcclub.theme", v);
     setThemeState(v);
   };
   return (
-    <Context.Provider value={{ branding, theme, setTheme }}>
+    <Context.Provider
+      value={{
+        branding,
+        theme: localStorage.getItem("pcclub.theme")
+          ? theme
+          : branding.defaultTheme || theme,
+        setTheme,
+      }}
+    >
       {children}
     </Context.Provider>
   );
