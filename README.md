@@ -25,3 +25,7 @@ Node.js 24 LTS로 `npm ci`, `npm run build`, `npm run dist:win`을 실행합니�
 `apps/web` React 화면 · `apps/launcher` Windows Electron 호스트 · `packages/shared` 공통 타입/클라우드 adapter · `supabase` SQL/Edge Function.
 
 `apps/server`는 1.0 로컬 서버의 이전 코드이며 1.1 설치 프로그램은 이를 실행하지 않습니다. 1.0 SQLite 데이터 자동 이전은 제공하지 않습니다.
+
+### Education / Enterprise 행사 계정
+
+Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](windows-lockdown/README-KO.md)를 추가 적용하세요. 앱 설치와 별개의 Windows 관리자 설정이며, 게임과 같은 입력의 선택적 허용에는 제한이 있습니다. 실제 Windows 적용 검증은 아직 하지 않았습니다.
