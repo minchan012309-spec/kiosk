@@ -53,7 +53,7 @@ export function Standby({
         </p>
         <p className="muted">
           {thanks
-            ? "잠시 후 대기 화면으로 돌아갑니다. 다시 이용하려면 키오스크에서 등록해 주세요."
+            ? "잠시 후 대기 화면으로 돌아갑니다. 남은 시간이 있으면 입장권 번호로 다시 입장할 수 있어요."
             : "등록이 끝나면 이 PC에 로그인 화면이 자동으로 나타납니다."}
         </p>
         <div className="standby-clock">

@@ -2189,3 +2189,79 @@ html.status-handle-window #root {
 [data-theme] .status-handle-button:hover { background: #edff9d; }
 [data-theme] .classroom-board .layout-pc.selected { background: var(--accent); color: #182015; }
 [data-theme] .classroom-board .layout-cell { background: var(--panel); }
+
+/* 1.3 tickets: retro arcade ticket look */
+.ticket-no { font-family: "RoundedFixedsys", monospace; letter-spacing: 4px; font-size: 34px; color: var(--accent); text-shadow: 2px 2px 0 #000; }
+.ticket-card { border: 2px dashed var(--accent); position: relative; }
+.ticket-input, .code-input { letter-spacing: 6px; text-align: center; font-size: 26px !important; font-family: "RoundedFixedsys", monospace; }
+.kiosk-steps { list-style: none; padding: 0; margin: 18px 0 24px; display: grid; gap: 10px; }
+.kiosk-steps li { display: flex; align-items: center; gap: 12px; font-size: 18px; padding: 10px 14px; border: 2px solid var(--line); background: var(--panel); box-shadow: 3px 3px 0 #000; }
+.kiosk-steps b { background: var(--accent); color: #172009; padding: 2px 8px; font-weight: 400; }
+.kiosk div.seat { cursor: default; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px; opacity: .55; }
+.kiosk div.seat.available { opacity: 1; }
+.topup { margin-top: 16px; display: grid; gap: 8px; }
+.tickets-page { display: grid; gap: 20px; }
+.ticket-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.ticket-stats span { border: 2px solid var(--line); background: var(--panel); padding: 12px 14px; color: var(--muted); font-size: 14px; box-shadow: 3px 3px 0 #000; }
+.ticket-stats strong { display: block; color: var(--accent); font-size: 26px; margin-top: 4px; font-weight: 400; }
+.scanner { position: relative; margin: 14px 0; max-width: 420px; border: 2px solid var(--accent); background: #000; aspect-ratio: 4 / 3; overflow: hidden; }
+.scanner video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scanner-frame { position: absolute; inset: 18%; border: 3px solid var(--accent); box-shadow: 0 0 0 999px #0008; }
+.ticket-detail { margin-top: 18px; border-top: 2px dashed var(--line); padding-top: 16px; display: grid; gap: 14px; }
+.ticket-head { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.ticket-head small { display: block; color: var(--muted); }
+.ticket-head .tag { margin-left: 10px; }
+.tag.on { background: var(--accent); color: #172009; }
+.coin-big { text-align: right; }
+.coin-big strong { font-size: 40px; color: #ffd23f; text-shadow: 2px 2px 0 #7a5c00; font-weight: 400; }
+.award h3, .exchange h3 { margin: 4px 0 10px; }
+.quick-coins { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 10px 0; }
+.quick-coins button { font-size: 20px; padding: 14px 0; background: var(--accent); color: #172009; }
+.stepper { display: inline-flex; align-items: center; gap: 10px; }
+.stepper button { padding: 4px 12px; }
+.stepper b { min-width: 22px; text-align: center; }
+.ticket-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 12px 0; max-height: 420px; overflow: auto; }
+.ticket-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; }
+.ticket-list button.issued { border-color: var(--accent); }
+.ticket-list b { font-family: "RoundedFixedsys", monospace; letter-spacing: 2px; }
+.ticket-list small { color: var(--muted); font-size: 12px; }
+label.check { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+
+/* 1.3 coin ranking board for the classroom display */
+.ranking-page { display: grid; gap: 16px; }
+.ranking-page .actions { align-items: center; gap: 16px; }
+.ranking-board { background: #0b0f0a radial-gradient(#ffffff12 1px, transparent 1px) 0 0 / 16px 16px; color: #eef7e6; border: 3px solid #000; box-shadow: 6px 6px 0 #000; padding: 28px clamp(16px, 4vw, 56px); font-family: "RoundedFixedsys", monospace; overflow: auto; }
+.ranking-board:fullscreen { display: flex; flex-direction: column; justify-content: center; padding: 3vh 6vw; border: 0; box-shadow: none; font-size: 1.6vw; }
+.ranking-board header { text-align: center; margin-bottom: 2.5vh; }
+.ranking-board header span { color: #abbc9b; letter-spacing: 4px; }
+.ranking-board h1 { font-family: "Yangjin", sans-serif; font-size: clamp(36px, 6vw, 120px); line-height: 1.2; color: #fff; text-shadow: 4px 4px 0 #496600; margin: 6px 0; }
+.ranking-board h1 em { font-style: normal; color: #ceff00; }
+.ranking-board header small { color: #ff5c7a; animation: rank-blink 1.2s steps(2, end) infinite; }
+@keyframes rank-blink { 50% { opacity: .2; } }
+.ranking-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.1vh; }
+.ranking-board li { display: grid; grid-template-columns: 3.2em minmax(6em, 1.2fr) 2fr auto; align-items: center; gap: 1em; padding: .55em 1em; background: #1c2519; border: 2px solid #000; box-shadow: 3px 3px 0 #000; font-size: clamp(16px, 1.6vw, 40px); }
+.ranking-board li.rank-1 { background: #ceff00; color: #172009; font-size: clamp(20px, 2.2vw, 56px); }
+.ranking-board li.rank-2, .ranking-board li.rank-3 { border-color: #ceff00; }
+.rank-no { text-align: center; font-weight: 400; }
+.rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-bar { height: .7em; background: #0008; border: 1px solid #000; }
+.rank-bar i { display: block; height: 100%; background: #ffd23f; transition: width .6s steps(8, end); }
+.rank-1 .rank-bar i { background: #172009; }
+.rank-coins { font-weight: 400; color: #ffd23f; text-shadow: 2px 2px 0 #7a5c00; white-space: nowrap; }
+.rank-1 .rank-coins { color: #172009; text-shadow: none; }
+.rank-coins small { font-size: .6em; }
+.ranking-board footer { text-align: center; margin-top: 2.5vh; color: #abbc9b; font-size: .8em; }
+.ranking-empty { text-align: center; color: #abbc9b; padding: 40px 0; }
+@media (max-width: 700px) { .ranking-board li { grid-template-columns: 2.4em 1fr auto; } .rank-bar { display: none; } }
+@media (prefers-reduced-motion: reduce) { .ranking-board header small { animation: none; } }
+
+/* kiosk seat status board */
+.seat-legend { margin: 6px 0 12px; font-size: 16px; }
+.kiosk div.seat { border: 2px solid #000; box-shadow: 3px 3px 0 #000; opacity: 1; }
+.kiosk div.seat.available { background: #ceff00; color: #172009; }
+.kiosk div.seat.available small { color: #172009; }
+.kiosk div.seat.occupied { background: #3a1820; color: #ffb3c0; border-color: #ff5c7a; }
+.kiosk div.seat.occupied small { color: #ff8fa3; }
+.kiosk div.seat.offline { opacity: .4; border-style: dashed; box-shadow: none; }
+.seat-legend i.available { background: #ceff00 !important; }
+.seat-legend i.occupied { background: #ff5c7a !important; }

@@ -224,9 +224,7 @@ function state() {
         ? "thanks"
         : deviceState?.session
           ? "active"
-          : deviceState?.reservation
-            ? "login"
-            : "idle",
+          : "login",
     closeAttemptAt,
     closeNotice,
     registered: !!token,
@@ -819,7 +817,10 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
     if (pendingEnd || (!deviceState?.session && games.running))
       throw Error("이전 이용 종료를 처리 중입니다.");
     const p = z
-      .object({ password: z.string().regex(/^[0-9]{4,6}$/) })
+      .object({
+        code: z.string().regex(/^[0-9]{8}$/),
+        extensionId: z.string().max(100).optional(),
+      })
       .parse(payload);
     const result = await request("/device/login", p);
     main?.setAlwaysOnTop(false);

@@ -167,5 +167,18 @@ export type AdminState = {
   exitRequests: ExitRequest[];
   commands: Command[];
   audit: Audit[];
+  tickets?: Ticket[];
   serverNow: number;
+};
+export type Ticket = {
+  id: string;
+  status: "ready" | "issued";
+  coins: number;
+  seconds?: number | null;
+  name?: string;
+  studentId?: string;
+  issuedAt?: number;
+  createdAt?: number;
+  log?: { at: number; delta: number; reason: string }[];
+  session?: { seatName: string; endAt: number } | null;
 };

@@ -239,7 +239,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
       </details>
     </>
   );
-  if (!overlay && (state.phase === "idle" || state.phase === "thanks"))
+  if (!overlay && state.phase === "thanks")
     return (
       <Standby state={state} thanks={state.phase === "thanks"}>
         {exitForm}
@@ -253,37 +253,54 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
         <div className="panel auth-card">
           <span className="badge">PC {state.device?.seatName}</span>
           <div className="eyebrow">YOUR NEXT GAME STARTS HERE</div>
-          <h1>{state.reservation?.name || "플레이어"} 님, 입장하세요</h1>
+          <h1>입장권 번호를 입력하세요</h1>
           <p className="muted">
-            키오스크에서 만든 4~6자리 비밀번호를 입력하세요.
+            입구에서 등록한 입장권의 8자리 번호로 바로 시작해요.
           </p>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              await call("login", { password: code });
-              setCode("");
+              const r = await call("login", { code });
+              if (r) setCode("");
             }}
           >
             <label>
-              PC 로그인 비밀번호
+              입장권 번호
               <input
-                className="code-input"
+                className="code-input ticket-input"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) =>
+                  setCode(e.target.value.replace(/\D/g, "").slice(0, 8))
+                }
                 inputMode="numeric"
-                pattern="[0-9]{4,6}"
-                minLength={4}
-                maxLength={6}
+                pattern="[0-9]{8}"
                 required
-                placeholder="4~6자리 비밀번호"
-                type="password"
+                placeholder="00000000"
                 autoComplete="off"
+                autoFocus
               />
             </label>
             <button className="primary wide" disabled={busy || !state.online}>
               입장하기 ↗
             </button>
           </form>
+          {/충전/.test(error) && code.length === 8 && (
+            <div className="topup">
+              <p className="muted">코인으로 시간을 충전하고 입장하기</p>
+              {state.extensions?.map((x) => (
+                <button
+                  key={x.id}
+                  disabled={busy}
+                  onClick={async () => {
+                    const r = await call("login", { code, extensionId: x.id });
+                    if (r) setCode("");
+                  }}
+                >
+                  +{x.seconds / 60}분 · {money(x.price)} 코인
+                </button>
+              ))}
+            </div>
+          )}
           <ErrorMessage message={error || state.error || ""} />
           {!state.online && (
             <p className="error">
@@ -326,9 +343,9 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
           <strong className="mono">{duration(state.remaining || 0)}</strong>
         </span>
         <span>
-          내 머니
+          내 코인
           <strong>
-            {money(session?.money || 0)} <small>M</small>
+            {money(session?.money || 0)} <small>코인</small>
           </strong>
         </span>
         <span className={state.online ? "green-text" : "danger-text"}>
@@ -433,7 +450,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
               />
               <h2>{p.name}</h2>
               <p className="muted">남은 수량 {p.stock}개</p>
-              <strong>{money(p.price)} M</strong>
+              <strong>{money(p.price)} 코인</strong>
               <button
                 className="primary wide"
                 disabled={
@@ -446,7 +463,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                 onClick={async () => {
                   if (
                     await confirm(
-                      `${p.name}을 ${money(p.price)} 머니에 주문할까요?`,
+                      `${p.name}을 ${money(p.price)} 코인에 주문할까요?`,
                     )
                   )
                     void call("purchase", {
@@ -496,7 +513,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                 +{e.seconds / 60}
                 <small>분</small>
               </strong>
-              <p>{money(e.price)} M</p>
+              <p>{money(e.price)} 코인</p>
               <button
                 className="primary wide"
                 disabled={
@@ -505,7 +522,7 @@ export function Launcher({ overlay = false }: { overlay?: boolean }) {
                 onClick={async () => {
                   if (
                     await confirm(
-                      `${money(e.price)} 머니를 사용해 ${e.seconds / 60}분 연장할까요?`,
+                      `${money(e.price)} 코인를 사용해 ${e.seconds / 60}분 연장할까요?`,
                     )
                   )
                     void call("extend", {
