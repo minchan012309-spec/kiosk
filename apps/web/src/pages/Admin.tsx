@@ -1,5 +1,6 @@
 import { LoadingScreen } from "./LoadingScreen";
 import { TicketsPanel } from "./Tickets";
+import { RankingPanel } from "./Ranking";
 import { SeatLayout } from "./SeatLayout";
 import { ImageField, PreviewImage, uploadCatalogImage } from "./ImageField";
 import { confirmInApp as confirm } from "../dialogs";
@@ -32,6 +33,7 @@ const tabs = [
   "관리자 / 권한",
   "브랜드 / 테마",
   "종료 비밀번호",
+  "코인 순위표",
 ];
 const orderLabels: Record<string, string> = {
   received: "접수",
@@ -56,6 +58,7 @@ export function Admin() {
     "accounts.manage",
     "settings.manage",
     "settings.manage",
+    "dashboard.view",
   ];
   const [logged, setLogged] = useState(false);
   const [needSetup, setNeedSetup] = useState(false);
@@ -297,7 +300,7 @@ export function Admin() {
                   }}
                 >
                   <span>
-                    {["◈", "▣", "▦", "▤", "◉", "▷", "⚙", "≡", "♙", "◐", "⌑"][i]}
+                    {["◈", "▣", "▦", "▤", "◉", "▷", "⚙", "≡", "♙", "◐", "⌑", "♛"][i]}
                   </span>
                   {t}
                   {i === 3 &&
@@ -1185,6 +1188,7 @@ export function Admin() {
             </div>
           </section>
         )}
+        {tab === tabs[11] && state && <RankingPanel state={state} />}
         {tab === tabs[1] && state && (
           <TicketsPanel state={state} busy={busy} run={run} allowed={allowed} />
         )}
