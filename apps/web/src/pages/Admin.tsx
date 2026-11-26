@@ -46,6 +46,13 @@ export function Admin() {
   const allowed = (p: string) =>
     !!state?.profile &&
     (state.profile.role === "owner" || state.profile.permissions.includes(p));
+  const coinOnly =
+    !!state?.profile &&
+    state.profile.role !== "owner" &&
+    state.profile.permissions.includes("tickets.coins") &&
+    state.profile.permissions.every((p) =>
+      ["dashboard.view", "tickets.coins"].includes(p),
+    );
   const tabPermissions = [
     "dashboard.view",
     "dashboard.view",
@@ -64,6 +71,10 @@ export function Admin() {
   const [needSetup, setNeedSetup] = useState(false);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState(tabs[0]);
+  useEffect(() => {
+    if (coinOnly) setTab(tabs[1]);
+  }, [coinOnly]);
+  const exeInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -290,7 +301,8 @@ export function Admin() {
         <nav>
           {tabs.map(
             (t, i) =>
-              allowed(tabPermissions[i]) && (
+              allowed(tabPermissions[i]) &&
+              (!coinOnly || i === 1) && (
                 <button
                   key={t}
                   className={tab === t ? "active" : ""}
@@ -939,15 +951,36 @@ export function Admin() {
                 />
                 <label>
                   실행 파일 경로
-                  <input
-                    name="executable"
-                    placeholder="C:\Games\MyGame\game.exe"
-                    defaultValue={editing?.value?.executable || ""}
-                  />
+                  <span className="path-pick">
+                    <input
+                      name="executable"
+                      ref={exeInput}
+                      placeholder="C:\Games\MyGame\game.exe"
+                      defaultValue={editing?.value?.executable || ""}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!window.cafe) {
+                          setError(
+                            "웹 브라우저는 파일의 전체 경로를 알려 주지 않아요. PC Club Admin 앱에서 파일 선택을 쓰거나, 각 PC 런처의 운영자 메뉴 → 이 PC 실행 파일 선택을 쓰세요.",
+                          );
+                          return;
+                        }
+                        const r = await window.cafe
+                          .invoke("pickExecutable")
+                          .catch((e: Error) => setError(e.message));
+                        if (r?.path && exeInput.current)
+                          exeInput.current.value = r.path;
+                      }}
+                    >
+                      📁 파일 선택
+                    </button>
+                  </span>
                 </label>
                 <p className="fine">
-                  게임을 설치한 Windows PC의 실제 경로를 입력하세요.
-                  바로가기(.lnk) 대신 실행 파일(.exe)을 선택하세요.
+                  PC Club Admin 앱에서는 파일 선택으로 경로가 자동 입력돼요. PC마다
+                  설치 위치가 다르면 각 PC 런처의 운영자 메뉴에서 선택하면 됩니다.
                 </p>
                 <label>
                   실행 인수 (JSON 배열)
@@ -1190,7 +1223,13 @@ export function Admin() {
         )}
         {tab === tabs[11] && state && <RankingPanel state={state} />}
         {tab === tabs[1] && state && (
-          <TicketsPanel state={state} busy={busy} run={run} allowed={allowed} />
+          <TicketsPanel
+            state={state}
+            busy={busy}
+            run={run}
+            allowed={allowed}
+            coinOnly={coinOnly}
+          />
         )}
         {tab === tabs[8] && state && allowed("accounts.manage") && (
           <AccountsPanel state={state} busy={busy} run={run} mutate={mutate} />

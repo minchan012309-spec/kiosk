@@ -701,6 +701,18 @@ ipcMain.handle("cafe:invoke", async (event, action: string, payload: any) => {
       webUrl: WEB_URL,
     };
   if (ROLE === "server") {
+    if (action === "pickExecutable") {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        title: "게임 실행 파일 선택",
+        properties: ["openFile" as const],
+        filters: [{ name: "Windows 실행 파일", extensions: ["exe"] }],
+      };
+      const file = win
+        ? await dialog.showOpenDialog(win, options)
+        : await dialog.showOpenDialog(options);
+      return file.canceled ? null : { path: file.filePaths[0] };
+    }
     if (action === "openKiosk") {
       await openKiosk();
       return true;

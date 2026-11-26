@@ -15,6 +15,7 @@ type Props = {
   busy: boolean;
   run: (fn: () => Promise<any>) => Promise<boolean>;
   allowed: (p: string) => boolean;
+  coinOnly?: boolean;
 };
 
 async function qrSvg(code: string) {
@@ -98,7 +99,7 @@ function Scanner({ onCode }: { onCode: (c: string) => void }) {
   );
 }
 
-export function TicketsPanel({ state, busy, run, allowed }: Props) {
+export function TicketsPanel({ state, busy, run, allowed, coinOnly }: Props) {
   const tickets = state.tickets || [];
   const [code, setCode] = useState("");
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -158,6 +159,7 @@ export function TicketsPanel({ state, busy, run, allowed }: Props) {
     .slice(0, 200);
   return (
     <div className="tickets-page">
+      {!coinOnly && (
       <div className="ticket-stats">
         <span>
           전체 <strong>{tickets.length}</strong>
@@ -173,6 +175,7 @@ export function TicketsPanel({ state, busy, run, allowed }: Props) {
           <strong>{money(issued.reduce((a, t) => a + (t.coins || 0), 0))}</strong>
         </span>
       </div>
+      )}
 
       <section className="panel scan-panel">
         <div className="eyebrow">SCAN TICKET</div>
@@ -279,13 +282,14 @@ export function TicketsPanel({ state, busy, run, allowed }: Props) {
                   />
                 </label>
                 <div className="quick-coins">
-                  {[1, 3, 5, 10, 20].map((n) => (
+                  {[1, 3, 5, 10, 20, -1, -3, -5, -10, -20].map((n) => (
                     <button
                       key={n}
                       disabled={busy}
                       onClick={() => void act("/admin/tickets/award", { coins: n, reason })}
                     >
-                      +{n}
+                      {n > 0 ? "+" : ""}
+                      {n}
                     </button>
                   ))}
                 </div>
@@ -443,6 +447,7 @@ export function TicketsPanel({ state, busy, run, allowed }: Props) {
         </section>
       )}
 
+      {!coinOnly && (
       <section className="panel">
         <h2>입장권 목록</h2>
         <input
@@ -480,6 +485,7 @@ export function TicketsPanel({ state, busy, run, allowed }: Props) {
           </button>
         )}
       </section>
+      )}
     </div>
   );
 }

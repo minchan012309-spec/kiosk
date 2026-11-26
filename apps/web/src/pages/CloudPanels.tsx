@@ -129,6 +129,15 @@ export function AccountsPanel({ state, busy, run, mutate }: Props) {
               <option value="viewer">조회 전용 · 개별 권한 선택</option>
             </select>
           </label>
+          <button
+            type="button"
+            onClick={() => {
+              setRole("staff");
+              setPermissions(["dashboard.view", "tickets.coins"]);
+            }}
+          >
+            🎮 행사 진행자 프리셋 · QR 스캔 코인 추가/차감만
+          </button>
           {role === "owner" ? (
             <p className="notice">
               소유자는 모든 권한을 가집니다. 마지막 소유자는 비활성화할 수

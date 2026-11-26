@@ -5,6 +5,7 @@ const allowed = new Set([
   "openWeb",
   "adminUnlock",
   "configureGame",
+  "pickExecutable",
   "exportConnection",
   "openData",
   "openKiosk",
