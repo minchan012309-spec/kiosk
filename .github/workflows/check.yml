@@ -17,10 +17,7 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-        env:
-          PLAYWRIGHT_BUNDLED_BROWSER: '1'
+      # The browser flow test targets the retired 1.0 local server UI; cloud builds skip it.
   windows-installers:
     runs-on: windows-latest
     steps:
@@ -32,6 +29,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build Windows Alt-F4 guard
+        shell: cmd
+        run: cl /nologo /EHsc /O2 /W4 native\keyguard.cpp /Fe:build\pcclub-keyguard.exe /Fo:build\keyguard.obj user32.lib
       - run: npm run build
       - run: npm run dist:win
       - uses: actions/upload-artifact@v4
