@@ -167,6 +167,21 @@ export function Kiosk() {
               <b>03</b> 빈 PC에서 입장권 번호로 입장
             </li>
           </ol>
+          <div className="legend seat-legend">
+            <span>
+              <i className="available" />
+              빈자리 {free}
+            </span>
+            <span>
+              <i className="occupied" />
+              사용 중{" "}
+              {state.seats.filter((s) => s.enabled && s.online && s.session).length}
+            </span>
+            <span>
+              <i />
+              준비 중
+            </span>
+          </div>
           <div
             className="seat-map classroom-seats"
             style={{
@@ -174,7 +189,8 @@ export function Kiosk() {
             }}
           >
             {state.seats.map((s, i) => {
-              const available = s.enabled && s.online && !s.session;
+              const ready = s.enabled && s.online;
+              const available = ready && !s.session;
               return (
                 <div
                   key={s.id}
@@ -182,7 +198,7 @@ export function Kiosk() {
                     gridColumn: seatPosition(s, i).col,
                     gridRow: seatPosition(s, i).row,
                   }}
-                  className={`seat ${available ? "available" : ""}`}
+                  className={`seat ${available ? "available" : ready ? "occupied" : "offline"}`}
                 >
                   <span className="monitor">▰</span>
                   <strong>PC {s.name}</strong>

@@ -2254,3 +2254,14 @@ label.check { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
 .ranking-empty { text-align: center; color: #abbc9b; padding: 40px 0; }
 @media (max-width: 700px) { .ranking-board li { grid-template-columns: 2.4em 1fr auto; } .rank-bar { display: none; } }
 @media (prefers-reduced-motion: reduce) { .ranking-board header small { animation: none; } }
+
+/* kiosk seat status board */
+.seat-legend { margin: 6px 0 12px; font-size: 16px; }
+.kiosk div.seat { border: 2px solid #000; box-shadow: 3px 3px 0 #000; opacity: 1; }
+.kiosk div.seat.available { background: #ceff00; color: #172009; }
+.kiosk div.seat.available small { color: #172009; }
+.kiosk div.seat.occupied { background: #3a1820; color: #ffb3c0; border-color: #ff5c7a; }
+.kiosk div.seat.occupied small { color: #ff8fa3; }
+.kiosk div.seat.offline { opacity: .4; border-style: dashed; box-shadow: none; }
+.seat-legend i.available { background: #ceff00 !important; }
+.seat-legend i.occupied { background: #ff5c7a !important; }
