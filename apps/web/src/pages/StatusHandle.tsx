@@ -10,7 +10,7 @@ export function StatusHandle() {
   return (
     <button
       className="status-handle-button"
-      aria-label="남은 시간·머니·주문 상태창 열기"
+      aria-label="남은 시간·코인·주문 상태창 열기"
       title="내 PC 상태창 열기"
       disabled={busy}
       onClick={async () => {

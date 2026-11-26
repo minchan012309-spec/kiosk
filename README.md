@@ -1,6 +1,6 @@
-# PC CLUB 1.1 · Supabase 축제 PC방
+# PC CLUB 1.3 · Supabase 축제 PC방
 
-**[설치 프로그램 ZIP](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Installers.zip)** · **[SQL·Edge Function 설정 파일](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/Supabase-Setup.zip)**
+**[설치 프로그램 ZIP](https://github.com/minchan012309-spec/kiosk/releases/download/v1.3.0/PC-Club-Installers.zip)** · **[SQL·Edge Function 설정 파일](https://github.com/minchan012309-spec/kiosk/releases/download/v1.3.0/Supabase-Setup.zip)**
 
 **[폰 / 관리자 웹](https://minchan012309-spec.github.io/kiosk/#/admin)** · **[키오스크 웹](https://minchan012309-spec.github.io/kiosk/#/kiosk)**
 
@@ -32,7 +32,7 @@ Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](
 
 ### 무설치형 Windows ZIP
 
-[관리자·키오스크용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Admin-Portable.zip) · [학생 PC용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Station-Portable.zip)
+[관리자·키오스크용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.3.0/PC-Club-Admin-Portable.zip) · [학생 PC용](https://github.com/minchan012309-spec/kiosk/releases/download/v1.3.0/PC-Club-Station-Portable.zip)
 
 전체 압축 해제 후 폴더 안 EXE를 실행하세요. [무설치 사용 안내](docs/PORTABLE-KO.md). 설정은 기존과 같이 Windows 사용자 AppData에 저장됩니다.
 
@@ -40,10 +40,12 @@ Windows 바탕 화면 전환을 제한하려면 [Windows 설정·복구 안내](
 
 ### 1.2 업데이트
 
-[업데이트 안내](docs/UPDATE-1.2-KO.md). 기존 Supabase 프로젝트는 [003_layout_media_restart.sql](supabase/migrations/003_layout_media_restart.sql)을 먼저 적용하세요. 좌석 삭제·드래그 배치·순서 변경, 원격 재부팅, 상품·게임 미리보기 업로드, 로고 로딩 화면·기본 다크 모드, 종료 타이머 정리와 Windows 전용 Alt+F4 보호를 추가했습니다.
+**1.3 입장권 업데이트: [안내](docs/UPDATE-1.3-KO.md) · [004_tickets.sql](supabase/migrations/004_tickets.sql) 먼저 실행.**
+
+[1.2 업데이트 안내](docs/UPDATE-1.2-KO.md). 기존 Supabase 프로젝트는 [003_layout_media_restart.sql](supabase/migrations/003_layout_media_restart.sql)을 먼저 적용하세요. 좌석 삭제·드래그 배치·순서 변경, 원격 재부팅, 상품·게임 미리보기 업로드, 로고 로딩 화면·기본 다크 모드, 종료 타이머 정리와 Windows 전용 Alt+F4 보호를 추가했습니다.
 
 ### 무설치 통합 다운로드
 
-[PC-Club-Portable.zip 하나 받기](https://github.com/minchan012309-spec/kiosk/releases/download/v1.2.0/PC-Club-Portable.zip). 한 번 압축 해제하면 학생용 `Station`과 관리자용 `Server` 폴더가 나옵니다. 학생 PC에서는 Station만 실행하세요.
+[PC-Club-Portable.zip 하나 받기](https://github.com/minchan012309-spec/kiosk/releases/download/v1.3.0/PC-Club-Portable.zip). 한 번 압축 해제하면 학생용 `Station`과 관리자용 `Server` 폴더가 나옵니다. 학생 PC에서는 Station만 실행하세요.
 
 GitHub Pages의 브랜치 게시에서도 관리자 앱이 열리도록 저장소 루트의 `index.html`, `.nojekyll`, `pcclub-web/`에 빌드 결과를 함께 둡니다. 웹 코드 업데이트 시 `npm run build` 후 `node scripts/publish-web-root.mjs`를 실행하고 생성 파일도 커밋하세요. Pages 워크플로는 공개 주소의 앱 모듈과 빌드 표시 파일을 확인한 뒤 성공 처리합니다.

@@ -1,4 +1,5 @@
 import { LoadingScreen } from "./LoadingScreen";
+import { TicketsPanel } from "./Tickets";
 import { SeatLayout } from "./SeatLayout";
 import { ImageField, PreviewImage, uploadCatalogImage } from "./ImageField";
 import { confirmInApp as confirm } from "../dialogs";
@@ -21,6 +22,7 @@ import { api, subscribe, money, duration } from "../api";
 import { Brand, ErrorMessage } from "../App";
 const tabs = [
   "운영 현황",
+  "입장권 / 코인",
   "좌석 / PC",
   "주문 관리",
   "상품 / 시간",
@@ -43,6 +45,7 @@ export function Admin() {
     !!state?.profile &&
     (state.profile.role === "owner" || state.profile.permissions.includes(p));
   const tabPermissions = [
+    "dashboard.view",
     "dashboard.view",
     "seats.manage",
     "orders.manage",
@@ -294,10 +297,10 @@ export function Admin() {
                   }}
                 >
                   <span>
-                    {["◈", "▦", "▤", "◉", "▷", "⚙", "≡", "♙", "◐", "⌑"][i]}
+                    {["◈", "▣", "▦", "▤", "◉", "▷", "⚙", "≡", "♙", "◐", "⌑"][i]}
                   </span>
                   {t}
-                  {i === 2 &&
+                  {i === 3 &&
                     state?.orders.some((o) => o.status === "received") && (
                       <i className="dot" />
                     )}
@@ -434,7 +437,7 @@ export function Admin() {
                       <th>이용자</th>
                       <th>상태</th>
                       <th>남은 시간</th>
-                      <th>머니</th>
+                      <th>코인</th>
                       <th>관리</th>
                     </tr>
                   </thead>
@@ -469,7 +472,7 @@ export function Admin() {
                                 )
                               : Math.floor(s.seconds / 60) + "분"}
                           </td>
-                          <td>{money(s.money)} M</td>
+                          <td>{money(s.money)} 코인</td>
                           <td>
                             <div className="actions">
                               <button
@@ -479,7 +482,7 @@ export function Admin() {
                                 }
                                 onClick={() => setAdjust(s.id)}
                               >
-                                시간 / 머니
+                                시간 / 코인
                               </button>
                               <button
                                 className="danger"
@@ -511,7 +514,7 @@ export function Admin() {
             </section>
           </>
         )}
-        {tab === tabs[1] && (
+        {tab === tabs[2] && (
           <>
             <section className="panel">
               <h2>좌석 추가</h2>
@@ -672,7 +675,7 @@ export function Admin() {
             </section>
           </>
         )}
-        {tab === tabs[2] && (
+        {tab === tabs[3] && (
           <section className="panel">
             <h2>간식 주문</h2>
             {!state?.orders.length && <Empty>아직 주문이 없어요.</Empty>}
@@ -685,7 +688,7 @@ export function Admin() {
                   <span className="grow">
                     <strong>{o.name}</strong>
                     <small>
-                      PC {seatName(o.seatId)} · {money(o.price)} M ·{" "}
+                      PC {seatName(o.seatId)} · {money(o.price)} 코인 ·{" "}
                       {new Date(o.createdAt).toLocaleTimeString("ko-KR")}
                     </small>
                   </span>
@@ -723,7 +726,7 @@ export function Admin() {
                         onClick={async () => {
                           if (
                             await confirm(
-                              "주문을 취소하고 머니와 재고를 복구할까요?",
+                              "주문을 취소하고 코인와 재고를 복구할까요?",
                             )
                           )
                             void mutate("/admin/orders/" + o.id, {
@@ -739,7 +742,7 @@ export function Admin() {
               ))}
           </section>
         )}
-        {tab === tabs[3] && (
+        {tab === tabs[4] && (
           <div className="two-columns">
             {(["products", "extensions"] as const).map((kind) => (
               <section className="panel" key={kind}>
@@ -762,7 +765,7 @@ export function Admin() {
                         {!p.enabled ? " · 판매 중지" : ""}
                       </strong>
                       <small>
-                        {money(p.price)} M ·{" "}
+                        {money(p.price)} 코인 ·{" "}
                         {"stock" in p
                           ? `재고 ${p.stock}`
                           : `${p.seconds / 60}분`}
@@ -793,7 +796,7 @@ export function Admin() {
                   </label>
                   <div className="two-columns">
                     <label>
-                      가격 (머니)
+                      가격 (코인)
                       <input
                         name="price"
                         type="number"
@@ -871,7 +874,7 @@ export function Admin() {
             ))}
           </div>
         )}
-        {tab === tabs[4] && (
+        {tab === tabs[5] && (
           <div className="two-columns">
             <section className="panel">
               <h2>등록된 게임</h2>
@@ -989,7 +992,7 @@ export function Admin() {
             </section>
           </div>
         )}
-        {tab === tabs[5] && (
+        {tab === tabs[6] && (
           <div className="two-columns">
             <section className="panel">
               <h2>기본 이용 정책</h2>
@@ -1027,7 +1030,7 @@ export function Admin() {
                     />
                   </label>
                   <label>
-                    초기 지급 머니
+                    초기 지급 코인
                     <input
                       name="money"
                       type="number"
@@ -1135,7 +1138,7 @@ export function Admin() {
                 <h2>행사 종료 후 개인정보 삭제</h2>
                 <p className="muted">
                   종료된 이용권의 이름·학번을 삭제합니다. 이용 중인 세션과
-                  머니·주문 기록은 유지됩니다.
+                  코인·주문 기록은 유지됩니다.
                 </p>
                 <button
                   className="danger"
@@ -1155,7 +1158,7 @@ export function Admin() {
             </div>
           </div>
         )}
-        {tab === tabs[6] && (
+        {tab === tabs[7] && (
           <section className="panel">
             <h2>최근 활동 기록</h2>
             <div className="table-wrap">
@@ -1182,13 +1185,16 @@ export function Admin() {
             </div>
           </section>
         )}
-        {tab === tabs[7] && state && allowed("accounts.manage") && (
+        {tab === tabs[1] && state && (
+          <TicketsPanel state={state} busy={busy} run={run} allowed={allowed} />
+        )}
+        {tab === tabs[8] && state && allowed("accounts.manage") && (
           <AccountsPanel state={state} busy={busy} run={run} mutate={mutate} />
         )}
-        {tab === tabs[8] && state && allowed("settings.manage") && (
+        {tab === tabs[9] && state && allowed("settings.manage") && (
           <BrandingPanel state={state} busy={busy} run={run} mutate={mutate} />
         )}
-        {tab === tabs[9] && state && allowed("settings.manage") && (
+        {tab === tabs[10] && state && allowed("settings.manage") && (
           <ExitPasswordsPanel
             state={state}
             busy={busy}
@@ -1199,7 +1205,7 @@ export function Admin() {
         {adjust && (
           <div className="modal-backdrop">
             <section className="panel modal">
-              <h2>시간 / 머니 조정</h2>
+              <h2>시간 / 코인 조정</h2>
               <p className="muted">추가는 양수, 차감은 음수로 입력하세요.</p>
               <form
                 onSubmit={async (e) => {
@@ -1226,7 +1232,7 @@ export function Admin() {
                   />
                 </label>
                 <label>
-                  머니 변경
+                  코인 변경
                   <input
                     name="money"
                     type="number"

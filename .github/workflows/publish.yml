@@ -1,5 +1,5 @@
 name: Publish PC Club ZIP
-# Publish 1.2 with restart protocol compatibility and duplicate request protection.
+# Publish 1.3 with QR/barcode entry tickets and coin exchange.
 on:
   push:
     branches: [main]
@@ -41,6 +41,8 @@ jobs:
           Copy-Item supabase/migrations/001_club.sql release/Supabase-Setup/001_club.sql
           Copy-Item supabase/002_first_owner.sql release/Supabase-Setup/002_first_owner.sql
           Copy-Item supabase/migrations/003_layout_media_restart.sql release/Supabase-Setup/003_layout_media_restart.sql
+          Copy-Item supabase/migrations/004_tickets.sql release/Supabase-Setup/004_tickets.sql
+          Copy-Item docs/UPDATE-1.3-KO.md release/Supabase-Setup/UPDATE-1.3-KO.md
           Copy-Item docs/UPDATE-1.2-KO.md release/Supabase-Setup/UPDATE-1.2-KO.md
           Copy-Item supabase/functions/club-admin/index.ts release/Supabase-Setup/club-admin.ts
           Copy-Item docs/SUPABASE-SETUP-KO.md release/Supabase-Setup/SETUP-KO.md
@@ -58,7 +60,7 @@ jobs:
             New-Item -ItemType Directory -Path $folder -Force | Out-Null
             Copy-Item "release/$($item.Role)/win-unpacked/*" $folder -Recurse
             Copy-Item docs/PORTABLE-KO.md "$folder/사용방법.md"
-            Copy-Item docs/UPDATE-1.2-KO.md "$folder/UPDATE-1.2-KO.md"
+            Copy-Item docs/UPDATE-1.3-KO.md "$folder/UPDATE-1.3-KO.md"
             Compress-Archive -Path $folder -DestinationPath "release/PC-Club-$($item.Name)-Portable.zip" -CompressionLevel Optimal
           }
           New-Item -ItemType Directory -Path release/PC-Club-Portable -Force | Out-Null
@@ -70,9 +72,9 @@ jobs:
       - name: Publish cloud release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0
+          tag_name: v1.3.0
           target_commitish: ${{ github.sha }}
-          name: PC Club 1.2.0 · Cloud
+          name: PC Club 1.3.0 · 입장권
           fail_on_unmatched_files: true
           files: |
             release/PC-Club-Installers.zip
@@ -84,27 +86,20 @@ jobs:
             release/Supabase-Setup/001_club.sql
             release/Supabase-Setup/002_first_owner.sql
             release/Supabase-Setup/003_layout_media_restart.sql
+            release/Supabase-Setup/004_tickets.sql
+            release/Supabase-Setup/UPDATE-1.3-KO.md
             release/Supabase-Setup/UPDATE-1.2-KO.md
             release/Supabase-Setup/club-admin.ts
             release/Supabase-Setup/SETUP-KO.md
           body: |
-            기존 사용자는 003_layout_media_restart.sql을 Supabase SQL Editor에서 먼저 실행하고 모든 Station/Admin을 업데이트하세요.
-            종료 시 창 파괴 오류 수정, Windows 전용 Alt+F4 보호, 좌석 삭제·드래그 배치·순서 변경, 원격 재부팅, 상품·게임 이미지 업로드, 로고 로딩/대기 화면과 기본 다크 모드를 포함합니다.
-            자세한 절차는 UPDATE-1.2-KO.md에 있습니다.
+            ## 1.3 · QR/바코드 입장권 + 코인
+            **기존 사용자: Supabase SQL Editor에서 004_tickets.sql을 먼저 실행하고 모든 Station/Admin을 업데이트하세요.** 자세한 내용은 UPDATE-1.3-KO.md.
 
-            게임·프로그램 위 오른쪽 상단 화살표 버튼으로 시간·머니·주문 상태창을 열 수 있습니다.
-            독점 전체화면 게임은 창 모드 또는 테두리 없는 전체화면을 사용하세요.
+            - 관리자에서 8자리 입장권 생성, QR·바코드 SVG(배경 투명·흰색 코드) ZIP 다운로드
+            - 입구 키오스크: 이름·학번 + 입장권 번호 등록 / PC: 입장권 번호로 바로 시작
+            - 코인은 입장권에 저장: 시간 연장·간식 주문, 피지컬 부스에서 폰 QR 스캔으로 지급
+            - 환전소: 남은 코인 간식 교환 후 반납·초기화로 입장권 재사용
 
-            Supabase 클라우드 버전입니다. 로컬 서버는 실행하지 않습니다.
-
-            1. Supabase-Setup.zip의 SQL·최초 소유자·Edge Function 설정을 먼저 완료하세요.
-            2. 설치형은 PC-Club-Installers.zip, 무설치형은 PC-Club-Portable.zip 하나를 받으세요. Station / Server 폴더가 함께 들어 있습니다.
-            3. 무설치형은 ZIP 전체를 풀고 폴더 안의 PC Club Admin.exe / PC Club Station.exe를 실행하세요. PC·키오스크 등록은 동일합니다.
-            4. 사용자 PC에서 관리자 인증 후 실제 게임 실행 파일을 선택하세요.
-
+            설치형: PC-Club-Installers.zip · 무설치형: PC-Club-Portable.zip (Station / Server 폴더)
             폰 관리자: https://minchan012309-spec.github.io/kiosk/#/admin
-            관리자 여러 계정·권한, 여러 종료 비밀번호, 이름·로고·테마 설정을 지원합니다.
-            4~6자리 비밀번호 입장, 대기/감사 화면, 앱 내 주문 팝업, Alt+F4 차단·알림 및 새 CRT 아이콘을 포함합니다.
-
-            SQL·Edge Function을 사용자의 프로젝트에 자동 적용하지 않습니다.
-            추가 전체 테스트는 실행하지 않았고 실제 Windows 게임 호환성은 미확인입니다. 설치 파일은 미서명입니다.
+            설치 파일은 미서명입니다. 실제 Windows·Supabase 실기 검증은 하지 않았습니다.

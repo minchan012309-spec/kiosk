@@ -10,7 +10,7 @@ export async function api<T = any>(
   return cloudRequest(
     path,
     body,
-    path === "/reservations"
+    path === "/reservations" || path === "/tickets/issue"
       ? localStorage.getItem("pcclub.kioskToken") || undefined
       : undefined,
     key,

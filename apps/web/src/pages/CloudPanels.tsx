@@ -328,7 +328,7 @@ export function BrandingPanel({ state, busy, run, mutate }: Props) {
         <h2>폰에서 관리자 화면 열기</h2>
         <p className="muted">
           폰 브라우저에서 아래 주소로 접속하고 관리자 계정으로 로그인하세요.
-          권한에 따라 이용 현황 확인, 킥, 시간·머니 조정, 주문 처리, 종료 승인이
+          권한에 따라 이용 현황 확인, 킥, 시간·코인 조정, 주문 처리, 종료 승인이
           가능합니다.
         </p>
         <a

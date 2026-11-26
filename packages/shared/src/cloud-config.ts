@@ -8,7 +8,11 @@ export const PERMISSIONS = [
   ["dashboard.view", "현황 보기"],
   ["visitors.view", "이름·학번 보기"],
   ["time.adjust", "시간 추가·차감"],
-  ["money.adjust", "머니 추가·차감"],
+  ["money.adjust", "코인 추가·차감 (PC 이용자)"],
+  ["tickets.manage", "입장권 생성·삭제·QR 다운로드"],
+  ["tickets.issue", "입장권 발급 (입구)"],
+  ["tickets.coins", "입장권 코인 지급 (피지컬 부스)"],
+  ["tickets.exchange", "환전소 교환·입장권 반납"],
   ["session.end", "이용 종료 / 킥"],
   ["pc.shutdown", "Windows 재부팅"],
   ["exit.approve", "런처 종료 승인"],
@@ -25,7 +29,14 @@ export const ROLE_PRESETS: Record<string, string[]> = {
   admin: PERMISSIONS.filter((p) => !["privacy.purge"].includes(p[0])).map(
     (p) => p[0],
   ),
-  staff: ["dashboard.view", "orders.manage", "exit.approve"],
+  staff: [
+    "dashboard.view",
+    "orders.manage",
+    "exit.approve",
+    "tickets.issue",
+    "tickets.coins",
+    "tickets.exchange",
+  ],
   viewer: ["dashboard.view"],
 };
 export function normalizePermissions(p: string[]) {

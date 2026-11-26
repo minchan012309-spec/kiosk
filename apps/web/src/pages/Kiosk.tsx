@@ -6,11 +6,9 @@ import { api, money, subscribe } from "../api";
 import { Brand, ErrorMessage } from "../App";
 export function Kiosk() {
   const [state, setState] = useState<PublicState>();
-  const [selected, setSelected] = useState("");
   const [name, setName] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordAgain, setPasswordAgain] = useState("");
+  const [code, setCode] = useState("");
   const [kioskToken, setKioskToken] = useState(
     () => localStorage.getItem("pcclub.kioskToken") || "",
   );
@@ -19,7 +17,7 @@ export function Kiosk() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const key = useRef(crypto.randomUUID());
-  const locked = useRef(false);
+  const codeInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const refresh = () =>
       api<PublicState>("/public/state")
@@ -30,57 +28,41 @@ export function Kiosk() {
     void refresh();
     return subscribe(() => void refresh());
   }, []);
+  const fresh = () => (key.current = crypto.randomUUID());
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (locked.current) return;
-    if (!/^[0-9]{4,6}$/.test(password) || password !== passwordAgain) {
-      setError("비밀번호는 숫자 4~6자리이며 확인 값과 같아야 합니다.");
+    if (busy) return;
+    if (!/^[0-9]{8}$/.test(code)) {
+      setError("입장권의 8자리 번호를 입력하거나 스캔해 주세요.");
       return;
     }
-    locked.current = true;
     setBusy(true);
     setError("");
     try {
       setResult(
-        await api(
-          "/reservations",
-          { seatId: selected, name, studentId, password },
-          key.current,
-        ),
+        await api("/tickets/issue", { code, name, studentId }, key.current),
       );
       setName("");
       setStudentId("");
-      setPassword("");
-      setPasswordAgain("");
-      setPassword("");
-      setPasswordAgain("");
+      setCode("");
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      locked.current = false;
       setBusy(false);
     }
   };
   const reset = () => {
     setResult(null);
-    setSelected("");
-    setName("");
-    setStudentId("");
-    setPassword("");
-    setPasswordAgain("");
-    key.current = crypto.randomUUID();
+    fresh();
   };
   useEffect(() => {
     if (!result) return;
-    const t = setTimeout(reset, 20000);
+    const t = setTimeout(reset, 15000);
     return () => clearTimeout(t);
   }, [result]);
   if (!state)
     return (
-      <LoadingScreen
-        error={error}
-        message="좌석과 키오스크 설정을 불러오고 있습니다."
-      />
+      <LoadingScreen error={error} message="키오스크 설정을 불러오고 있습니다." />
     );
   if (!kioskToken)
     return (
@@ -134,26 +116,20 @@ export function Kiosk() {
     return (
       <div className="success-screen">
         <div className="success-mark">✓</div>
-        <div className="eyebrow">READY TO PLAY</div>
-        <h1>이용권이 준비됐어요</h1>
-        <p>
-          PC {state?.seats.find((s) => s.id === selected)?.name}에 로그인 화면이
-          자동으로 표시됩니다.
-        </p>
-        <div className="ticket">
-          <span>이용할 자리</span>
-          <strong>
-            PC {state?.seats.find((s) => s.id === selected)?.name}
-          </strong>
-          <p>방금 만든 4~6자리 비밀번호로 입장하세요.</p>
+        <div className="eyebrow">TICKET ACTIVATED</div>
+        <h1>입장권이 등록됐어요</h1>
+        <div className="ticket ticket-card">
+          <span>입장권 번호</span>
+          <strong className="ticket-no">{result.id}</strong>
           <p>
-            {Math.floor(result.seconds / 60)}분 · {money(result.money)} 머니
+            {Math.floor((result.seconds || 0) / 60)}분 · {money(result.coins)}{" "}
+            코인
           </p>
           <small>
-            PC에서 비밀번호를 입력하고 입장하는 순간부터 시간이 시작됩니다.
+            빈 PC에 앉아 이 번호를 입력하면 시간이 시작돼요.
             <br />
-            {new Date(result.expiresAt).toLocaleTimeString("ko-KR")}까지
-            로그인해 주세요.
+            피지컬 게임 코인도 이 입장권에 쌓이고, 남은 코인은 환전소에서 간식으로
+            바꿀 수 있어요. 나갈 때 입장권을 꼭 반납해 주세요.
           </small>
         </div>
         <button className="primary" onClick={reset}>
@@ -161,98 +137,70 @@ export function Kiosk() {
         </button>
       </div>
     );
+  const free = state.seats.filter(
+    (s) => s.enabled && s.online && !s.session,
+  ).length;
   return (
     <div className="kiosk">
       <header>
         <Brand />
         <span className="badge">
-          <i /> 축제 PC방에 오신 걸 환영해요
+          <i /> 빈 PC {free}대
         </span>
       </header>
       <main className="kiosk-layout">
         <section>
-          <div className="eyebrow">TAKE YOUR SEAT</div>
+          <div className="eyebrow">INSERT TICKET · PRESS START</div>
           <h1>
-            오늘의 플레이,
+            입장권 받고,
             <br />
-            <em>여기서 시작.</em>
+            <em>플레이 시작.</em>
           </h1>
-          <p className="muted">
-            빈자리를 고르고 이용권을 받아 주세요.
-            <br />
-            시간은 PC에서 로그인한 순간부터 시작돼요.
-          </p>
-          <div className="legend">
-            <span>
-              <i className="available" />
-              이용 가능
-            </span>
-            <span>
-              <i className="occupied" />
-              사용 중
-            </span>
-            <span>
-              <i />
-              연결 대기 / 사용 중지
-            </span>
-          </div>
+          <ol className="kiosk-steps">
+            <li>
+              <b>01</b> 이름·학번 입력
+            </li>
+            <li>
+              <b>02</b> 운영자에게 받은 입장권 번호 입력
+            </li>
+            <li>
+              <b>03</b> 빈 PC에서 입장권 번호로 입장
+            </li>
+          </ol>
           <div
             className="seat-map classroom-seats"
             style={{
-              gridTemplateColumns: `repeat(${Math.max(6, ...(state?.seats.map((s, i) => seatPosition(s, i).col) || []))}, minmax(90px,1fr))`,
+              gridTemplateColumns: `repeat(${Math.max(6, ...state.seats.map((s, i) => seatPosition(s, i).col))}, minmax(90px,1fr))`,
             }}
           >
-            {state?.seats.length === 0 && (
-              <div className="empty">운영자가 좌석을 준비하고 있어요.</div>
-            )}
-            {state?.seats.map((s, i) => {
+            {state.seats.map((s, i) => {
               const available = s.enabled && s.online && !s.session;
               return (
-                <button
+                <div
                   key={s.id}
                   style={{
                     gridColumn: seatPosition(s, i).col,
                     gridRow: seatPosition(s, i).row,
                   }}
-                  aria-label={`PC ${s.name} ${available ? "이용 가능" : "사용 불가"}`}
-                  className={`seat ${available ? "available" : ""} ${selected === s.id ? "selected" : ""}`}
-                  disabled={!available}
-                  onClick={() => {
-                    setSelected(s.id);
-                    key.current = crypto.randomUUID();
-                  }}
+                  className={`seat ${available ? "available" : ""}`}
                 >
                   <span className="monitor">▰</span>
                   <strong>PC {s.name}</strong>
                   <small>
-                    {!s.enabled
-                      ? "사용 중지"
-                      : !s.online
-                        ? "연결 대기"
-                        : s.session?.status === "reserved"
-                          ? "배정 대기"
-                          : s.session
-                            ? "사용 중"
-                            : "이용 가능"}
+                    {!s.enabled || !s.online
+                      ? "준비 중"
+                      : s.session
+                        ? "사용 중"
+                        : "비어 있음"}
                   </small>
-                </button>
+                </div>
               );
             })}
           </div>
-          <div className="screen-line">PROGRAMMING CLUB · FESTIVAL ARENA</div>
         </section>
         <aside className="panel registration">
-          <span className="step">01 / CHECK IN</span>
-          <h2>플레이어 등록</h2>
-          <p className="muted">이용할 자리와 정보를 확인해 주세요.</p>
-          <div className="chosen">
-            <span>선택한 좌석</span>
-            <strong>
-              {selected
-                ? "PC " + state?.seats.find((s) => s.id === selected)?.name
-                : "좌석을 선택해 주세요"}
-            </strong>
-          </div>
+          <span className="step">CHECK IN</span>
+          <h2>입장 등록</h2>
           <form onSubmit={submit}>
             <label>
               이름
@@ -260,11 +208,11 @@ export function Kiosk() {
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
-                  key.current = crypto.randomUUID();
+                  fresh();
                 }}
                 required
                 maxLength={100}
-                placeholder="이름을 입력하세요"
+                placeholder="이름"
                 autoComplete="off"
               />
             </label>
@@ -274,80 +222,54 @@ export function Kiosk() {
                 value={studentId}
                 onChange={(e) => {
                   setStudentId(e.target.value);
-                  key.current = crypto.randomUUID();
+                  fresh();
                 }}
                 required
                 maxLength={30}
-                placeholder="학번을 입력하세요"
+                placeholder="학번"
                 autoComplete="off"
               />
             </label>
             <label>
-              PC 로그인 비밀번호 · 숫자 4~6자리
+              입장권 번호 · 8자리 (스캐너로 찍어도 돼요)
               <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]{4,6}"
-                minLength={4}
-                maxLength={6}
-                required
-                autoComplete="new-password"
-                value={password}
+                ref={codeInput}
+                className="code-input"
+                value={code}
                 onChange={(e) => {
-                  setPassword(e.target.value.replace(/\D/g, ""));
-                  key.current = crypto.randomUUID();
+                  setCode(e.target.value.replace(/\D/g, "").slice(0, 8));
+                  fresh();
                 }}
-                placeholder="기억하기 쉬운 비밀번호"
-              />
-            </label>
-            <label>
-              비밀번호 확인
-              <input
-                type="password"
                 inputMode="numeric"
-                pattern="[0-9]{4,6}"
-                minLength={4}
-                maxLength={6}
                 required
-                autoComplete="new-password"
-                value={passwordAgain}
-                onChange={(e) =>
-                  setPasswordAgain(e.target.value.replace(/\D/g, ""))
-                }
-                placeholder="같은 비밀번호를 한 번 더 입력"
+                placeholder="00000000"
+                autoComplete="off"
               />
             </label>
             <div className="grant">
               <span>
-                기본 지급 시간
+                PC 시간
                 <strong>
-                  {Math.floor((state?.settings.initialSeconds || 0) / 60)}
+                  {Math.floor((state.settings.initialSeconds || 0) / 60)}
                   <small> 분</small>
                 </strong>
               </span>
               <span>
-                기본 지급 머니
+                시작 코인
                 <strong>
-                  {money(state?.settings.initialMoney || 0)}
-                  <small> M</small>
+                  {money(state.settings.initialMoney || 0)}
+                  <small> 코인</small>
                 </strong>
               </span>
             </div>
             <p className="fine">
-              이름과 학번은 행사 운영에만 사용되며 행사 종료 후 삭제합니다.
+              이름과 학번은 행사 운영에만 사용하며, 입장권 반납 시 삭제됩니다.
             </p>
             <ErrorMessage message={error} />
-            <button
-              className="primary wide"
-              disabled={!selected || busy || !state}
-            >
-              {busy ? "이용권을 발급하고 있어요…" : "이용권 발급"}{" "}
-              <span aria-hidden="true">↗</span>
+            <button className="primary wide" disabled={busy}>
+              {busy ? "등록하고 있어요…" : "입장권 등록 ↗"}
             </button>
           </form>
-          <small className="muted">
-            도움이 필요하면 가까운 운영자에게 말씀해 주세요.
-          </small>
         </aside>
       </main>
       <footer>
