@@ -172,7 +172,16 @@ button, input { font: inherit; color: inherit; }
   .row.blank { display: none; }
   .s-booth:has(span:empty) { visibility: hidden; }
   .s-stat [data-k]:empty::after { content: "-"; }
+  .coin-rule, .step, .add-row, .row .del { display: none !important; }
 }
+/* same rules for the direct-download PDF renderer (it draws a clone marked .pdf, not in print mode) */
+.pdf [data-k]:empty::before, .pdf .cell:empty::before { content: none; }
+.pdf .shot-empty small, .pdf .shot-empty b { display: none; }
+.pdf .shot-empty .req::after { content: " · 사진 미첨부"; }
+.pdf .row.blank { display: none; }
+.pdf .s-booth:has(span:empty) { visibility: hidden; }
+.pdf .s-stat [data-k]:empty::after { content: "-"; }
+.pdf .coin-rule, .pdf .step, .pdf .add-row, .pdf .row .del { display: none !important; }
 </style>
 </head>
 <body>
@@ -191,7 +200,7 @@ button, input { font: inherit; color: inherit; }
   </div>
   <div class="tb-info">
     <div class="tb-row">
-      <span>안내지의 <b>모든 글자를 클릭해서 고치세요</b> · 로고 클릭 시 이미지 변경 · 줄 추가는 <b>+ 추가</b> 또는 <b>Enter</b> · 작품명 줄바꿈은 <b>Shift+Enter</b> · 코인은 <b>− / +</b> 버튼 (200 단위)</span>
+      <span>안내지의 <b>모든 글자를 클릭해서 고치세요</b> · 로고 클릭 시 이미지 변경 · 줄 추가는 <b>+ 추가</b> 또는 <b>Enter</b> · 작품명 줄바꿈은 <b>Shift+Enter</b> · 코인은 <b>− / +</b> 버튼 (100 단위)</span>
       <span class="fname">파일 이름: <b id="fname">-</b></span>
       <div class="status" id="status"></div>
     </div>
@@ -261,12 +270,12 @@ button, input { font: inherit; color: inherit; }
   </div>
 
   <section class="help">
-    <b>PDF 저장 방법 (크롬·엣지)</b> — 입력 내용은 이 브라우저에 자동 저장돼요.
+    <b>PDF 저장 방법</b> — 입력 내용은 이 브라우저에 자동 저장돼요.
     <ol>
-      <li>위의 <b>PDF로 저장</b> 클릭 → 대상(프린터) <b>PDF로 저장</b></li>
-      <li>용지 크기 <b>A4</b>, 여백 <b>없음</b>, 설정 더보기 → <b>배경 그래픽</b> 체크</li>
+      <li>위의 <b>PDF로 저장</b>을 누르면 인쇄 창 없이 A4 PDF가 바로 다운로드돼요.</li>
       <li>저장한 PDF를 드라이브에 업로드</li>
     </ol>
+    <span>※ 직접 인쇄(Ctrl+P)도 되지만, 그때는 용지 <b>A4</b>, 여백 <b>없음</b>, <b>배경 그래픽</b> 체크가 필요해요.</span>
   </section>
 </main>
 <input type="file" id="shotFile" accept="image/*" hidden />
@@ -280,7 +289,7 @@ button, input { font: inherit; color: inherit; }
     booth: "07", genre: "아케이드", players: "1인용", playtime: "약 1분 30초",
     desc: "공을 쏘아 올려 장애물을 맞히고 고득점을 노리는 핀볼 게임입니다.\n공이 아래로 떨어지면 목숨이 하나 줄어들고, 목숨 3개를 모두 잃으면 게임 오버!",
     controls: [{ k: "SPACE", v: "공 발사 (길게 누를수록 세게)" }, { k: "← / →", v: "왼쪽·오른쪽 플리퍼" }, { k: "R", v: "다시 시작" }],
-    coins: [{ k: "1000점 이상", v: "500" }, { k: "2000점 이상", v: "700" }, { k: "3000점 이상", v: "900" }],
+    coins: [{ k: "1000점 이상", v: "500" }, { k: "2000점 이상", v: "600" }, { k: "3000점 이상", v: "700" }],
     coinNote: "1인 1회 · 운영자가 점수 확인 후 지급",
     theme: "dark", shot: ""
   };
@@ -294,7 +303,7 @@ button, input { font: inherit; color: inherit; }
   };
   const keepLabels = () => Object.fromEntries(Object.keys(DEF).map((k) => [k, state[k] ?? DEF[k]]).concat([["logo", state.logo || ""]]));
   const PH = { controls: ["키", "하는 일"], coins: ["조건 (예: 1000점 이상)", "500"] };
-  const COIN_MIN = 500, COIN_STEP = 200, COIN_MAX = 9900;
+  const COIN_MIN = 500, COIN_STEP = 100, COIN_MAX = 9900;
   const normAmt = (v) => { let n = parseInt(v, 10); if (!Number.isFinite(n)) n = COIN_MIN; n = Math.max(COIN_MIN, Math.min(COIN_MAX, n)); return COIN_MIN + Math.round((n - COIN_MIN) / COIN_STEP) * COIN_STEP; };
   const normCoins = (st) => { st.coins = (st.coins || []).map((r) => ({ k: r.k || "", v: String(normAmt(r.v)) })); if (!st.coins.length) st.coins = [{ k: "", v: "500" }]; return st; };
   const COIN_SVG = '<svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="#7a5c00" d="M2 0h4v1h1v1h1v4H7v1H6v1H2V7H1V6H0V2h1V1h1z"/><path fill="#ffd23f" d="M2 1h4v1h1v4H6v1H2V6H1V2h1z"/><path fill="#fff3b0" d="M2 2h1v3H2z"/><path fill="#b88a00" d="M4 2h1v4H4z"/></svg>';
@@ -415,7 +424,7 @@ button, input { font: inherit; color: inherit; }
         });
         return btn;
       };
-      const minus = mk("−", -1, "코인 200개 줄이기"), plus = mk("+", 1, "코인 200개 늘리기");
+      const minus = mk("−", -1, "코인 100개 줄이기"), plus = mk("+", 1, "코인 100개 늘리기");
       const sync = () => {
         const idx = [...row.parentNode.children].indexOf(row), v = normAmt(state[key][idx].v);
         b.textContent = v; minus.disabled = v <= COIN_MIN; plus.disabled = v >= COIN_MAX;
@@ -579,8 +588,82 @@ button, input { font: inherit; color: inherit; }
     ].filter(([m]) => m).map(([, n]) => n);
     if (missing.length && !confirm(`아직 비어 있어요: ${missing.join(", ")}\n그래도 저장할까요?`)) return;
     if (document.activeElement) document.activeElement.blur();
-    window.print();
+    savePdf();
   });
+
+  /* ---- direct PDF download (no print dialog) ---- */
+  const W_PX = 794, H_PX = 1123, SCALE = 3;
+  async function toDataUrl(src) {
+    if (!src || /^data:/.test(src)) return src;
+    try {
+      const res = await fetch(src, { mode: "cors" });
+      const blob = await res.blob();
+      return await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(blob); });
+    } catch (e) { return null; }
+  }
+  const loadImg = (url) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("render")); i.src = url; });
+  async function renderSheet() {
+    const clone = sheet.cloneNode(true);
+    clone.classList.remove("editing"); clone.classList.add("pdf");
+    clone.removeAttribute("id"); clone.style.margin = "0";
+    clone.querySelectorAll("[contenteditable]").forEach((n) => n.removeAttribute("contenteditable"));
+    const logo = clone.querySelector("#logoImg");
+    if (logo) { const d = await toDataUrl(state.logo || LOGO); if (d) logo.setAttribute("src", d); else logo.remove(); }
+    const wrap = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    const st = document.createElementNS("http://www.w3.org/1999/xhtml", "style");
+    st.textContent = document.querySelector("style").textContent;
+    wrap.append(st, clone);
+    const xml = new XMLSerializer().serializeToString(wrap);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W_PX}" height="${H_PX}"><foreignObject x="0" y="0" width="${W_PX}" height="${H_PX}">${xml}</foreignObject></svg>`;
+    const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    try {
+      await loadImg(url);                       // first pass warms up the embedded fonts
+      const img = await loadImg(url);
+      const c = document.createElement("canvas");
+      c.width = W_PX * SCALE; c.height = H_PX * SCALE;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = getComputedStyle(sheet).backgroundColor || "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      return await new Promise((ok, no) => c.toBlob((b) => (b ? ok({ blob: b, w: c.width, h: c.height }) : no(new Error("jpeg"))), "image/jpeg", 0.93));
+    } catch (e) { throw e; }
+  }
+  async function jpegToPdf({ blob, w, h }) {
+    const jpg = new Uint8Array(await blob.arrayBuffer());
+    const enc = new TextEncoder(), parts = [], offs = [];
+    let len = 0;
+    const push = (x) => { const u = typeof x === "string" ? enc.encode(x) : x; parts.push(u); len += u.length; };
+    const obj = (n, body) => { offs[n] = len; push(`${n} 0 obj\n`); push(body); push("\nendobj\n"); };
+    const PW = 595.28, PH = 841.89, content = `q ${PW} 0 0 ${PH} 0 0 cm /Im0 Do Q`;
+    push("%PDF-1.4\n");
+    obj(1, "<</Type/Catalog/Pages 2 0 R>>");
+    obj(2, "<</Type/Pages/Kids[3 0 R]/Count 1>>");
+    obj(3, `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${PW} ${PH}]/Resources<</XObject<</Im0 4 0 R>>>>/Contents 5 0 R>>`);
+    offs[4] = len; push(`4 0 obj\n<</Type/XObject/Subtype/Image/Width ${w}/Height ${h}/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ${jpg.length}>>\nstream\n`); push(jpg); push("\nendstream\nendobj\n");
+    obj(5, `<</Length ${content.length}>>\nstream\n${content}\nendstream`);
+    const xref = len;
+    push(`xref\n0 6\n0000000000 65535 f \n` + [1, 2, 3, 4, 5].map((n) => String(offs[n]).padStart(10, "0") + " 00000 n \n").join(""));
+    push(`trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF`);
+    return new Blob(parts, { type: "application/pdf" });
+  }
+  let saving = false;
+  async function savePdf() {
+    if (saving) return;
+    saving = true; const btn = $("print"), label = btn.textContent;
+    btn.disabled = true; btn.textContent = "PDF 만드는 중…";
+    try {
+      const pdf = await jpegToPdf(await renderSheet());
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(pdf); a.download = $("fname").textContent || "작품안내.pdf";
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      status("PDF를 다운로드했어요. 다운로드 폴더를 확인해 주세요.", true);
+    } catch (e) {
+      console.error("PDF render failed", e);
+      status("PDF를 바로 만들지 못했어요. 인쇄 창에서 'PDF로 저장'을 선택해 주세요.", true);
+      sheet.classList.remove("editing");
+      try { window.print(); } finally { sheet.classList.add("editing"); }
+    } finally { saving = false; btn.disabled = false; btn.textContent = label; }
+  }
   window.addEventListener("beforeprint", () => sheet.classList.remove("editing"));
   window.addEventListener("afterprint", () => sheet.classList.add("editing"));
 
